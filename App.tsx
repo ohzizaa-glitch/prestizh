@@ -1,14 +1,32 @@
-import React, { useState, useMemo } from 'react';
-import { SERVICE_CATEGORIES, PRINTING_CATEGORY } from './constants';
+import React, { useState, useMemo, useEffect } from 'react';
+import { SERVICE_CATEGORIES, PRINTING_CATEGORY, PHOTO_VARIANTS } from './constants';
 import ServiceCard from './components/ServiceCard';
 import PrintingSection from './components/PrintingSection';
 import Receipt from './components/Receipt';
-import { ShoppingBag } from 'lucide-react';
+import HistoryModal from './components/HistoryModal';
+import { ShoppingBag, History } from 'lucide-react';
+import { PaymentMethod, Order } from './types';
 
 export default function App() {
-  // Store quantities as { [itemId]: number }
+  // Store quantities as { [itemId or itemId__variantId]: number }
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  
+  // History State
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [orderHistory, setOrderHistory] = useState<Order[]>([]);
+
+  // Load history from local storage on mount
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('prestige_order_history');
+    if (savedHistory) {
+      try {
+        setOrderHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Failed to parse history", e);
+      }
+    }
+  }, []);
 
   const handleQuantityChange = (id: string, qty: number) => {
     setQuantities(prev => {
@@ -26,6 +44,11 @@ export default function App() {
     setIsReceiptOpen(false);
   };
 
+  const handleClearHistory = () => {
+    setOrderHistory([]);
+    localStorage.removeItem('prestige_order_history');
+  };
+
   // Flatten all items for calculation
   const allItems = useMemo(() => {
     const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items);
@@ -33,15 +56,54 @@ export default function App() {
     return [...standardItems, ...printingItems];
   }, []);
 
-  // Calculate total price
+  // Calculate total price accounting for composite keys
   const totalPrice = useMemo(() => {
-    return allItems.reduce((total, item) => {
-      const qty = quantities[item.id] || 0;
-      return total + (qty * item.price);
+    return Object.entries(quantities).reduce((total, [key, value]) => {
+      const qty = value as number;
+      const [itemId] = key.split('__');
+      const item = allItems.find(i => i.id === itemId);
+      return total + (item ? (qty * item.price) : 0);
     }, 0);
   }, [allItems, quantities]);
 
   const totalItemsCount = (Object.values(quantities) as number[]).reduce((a, b) => a + b, 0);
+
+  const handleSaveOrder = (paymentMethod: PaymentMethod) => {
+    const orderItems: Order['items'] = [];
+    
+    Object.entries(quantities).forEach(([key, value]) => {
+       const qty = value as number;
+       const [itemId, variantId] = key.split('__');
+       const item = allItems.find(i => i.id === itemId);
+       if(item) {
+          const variant = variantId ? PHOTO_VARIANTS.find(v => v.id === variantId) : undefined;
+          orderItems.push({
+             name: item.name,
+             variant: variant?.label,
+             price: item.price,
+             quantity: qty,
+             total: qty * item.price
+          });
+       }
+    });
+
+    const newOrder: Order = {
+       id: Date.now().toString(),
+       date: new Date().toISOString(),
+       timestamp: Date.now(),
+       items: orderItems,
+       totalAmount: totalPrice,
+       paymentMethod
+    };
+
+    const newHistory = [newOrder, ...orderHistory];
+    setOrderHistory(newHistory);
+    localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
+    
+    // Clear cart after save
+    setQuantities({});
+    alert(`Заказ на сумму ${totalPrice} ₽ успешно сохранен!`);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -58,14 +120,21 @@ export default function App() {
             </div>
           </div>
           
-          {/* Working hours section removed as requested */}
+          <button 
+             onClick={() => setIsHistoryOpen(true)}
+             className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors flex items-center space-x-1"
+             title="История заказов"
+          >
+             <History size={20} />
+             <span className="hidden sm:inline text-sm font-medium">История</span>
+          </button>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 py-8">
         
-        {/* Printing Section First (Special Design) */}
+        {/* Printing Section First */}
         <PrintingSection 
           category={PRINTING_CATEGORY}
           quantities={quantities}
@@ -85,8 +154,8 @@ export default function App() {
         </div>
       </main>
 
-      {/* Sticky Bottom Bar for Mobile/Desktop */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 p-4">
+      {/* Sticky Bottom Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 p-4 safe-area-bottom">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div>
             <p className="text-slate-500 text-sm mb-1">Итого к оплате:</p>
@@ -100,7 +169,7 @@ export default function App() {
             <ShoppingBag size={20} />
             <span>Корзина</span>
             {totalItemsCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-white">
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-white animate-bounce">
                 {totalItemsCount}
               </span>
             )}
@@ -115,6 +184,16 @@ export default function App() {
           quantities={quantities}
           onClose={() => setIsReceiptOpen(false)}
           onClear={handleClearCart}
+          onSaveOrder={handleSaveOrder}
+        />
+      )}
+
+      {/* History Modal */}
+      {isHistoryOpen && (
+        <HistoryModal 
+           orders={orderHistory}
+           onClose={() => setIsHistoryOpen(false)}
+           onClearHistory={handleClearHistory}
         />
       )}
     </div>

@@ -7,7 +7,16 @@ import {
   Video, 
   Image as ImageIcon 
 } from 'lucide-react';
-import { ServiceCategory } from './types';
+import { ServiceCategory, ServiceVariant } from './types';
+
+export const PHOTO_VARIANTS: ServiceVariant[] = [
+  { id: '3x4', label: '3 × 4 см', description: 'Медицинская книжка, Пропуск, Разрешение на оружие (РОХа)' },
+  { id: '3.5x4.5', label: '3,5 × 4,5 см', description: 'Паспорт РФ, Визы, Водительские права' },
+  { id: '2.5x3.5', label: '2,5 × 3,5 см', description: 'Военный билет' },
+  { id: '3x4_corner', label: '3 × 4 см (с уголком)', description: 'Тракторные права' },
+  { id: '4x6', label: '4 × 6 см', description: 'Личное дело, Лицензия охранника' },
+  { id: '9x12', label: '9 × 12 см', description: 'Личное дело' },
+];
 
 export const SERVICE_CATEGORIES: ServiceCategory[] = [
   {
@@ -15,8 +24,8 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     title: 'Фото на документы',
     icon: Camera,
     items: [
-      { id: 'doc_photo', name: 'Фото на документы', price: 350, unit: 'комплект' },
-      { id: 'doc_copy', name: 'Дополнительный комплект фото', price: 70, unit: 'комплект' },
+      { id: 'doc_photo', name: 'Фото на документы', price: 350, unit: 'комплект', hasVariants: true },
+      { id: 'doc_copy', name: 'Дополнительный комплект фото', price: 70, unit: 'комплект', hasVariants: true },
       { id: 'doc_retouch', name: 'Ретушь фото на документы', price: 50, unit: 'услуга' },
     ],
   },
