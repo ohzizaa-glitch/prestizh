@@ -4,7 +4,8 @@ import ServiceCard from './components/ServiceCard';
 import PrintingSection from './components/PrintingSection';
 import Receipt from './components/Receipt';
 import HistoryModal from './components/HistoryModal';
-import { ShoppingBag, History } from 'lucide-react';
+import EarningsModal from './components/EarningsModal';
+import { ShoppingBag, History, TrendingUp } from 'lucide-react';
 import { PaymentMethod, Order } from './types';
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
   
   // History State
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isEarningsOpen, setIsEarningsOpen] = useState(false);
   const [orderHistory, setOrderHistory] = useState<Order[]>([]);
 
   // Load history from local storage on mount
@@ -120,14 +122,24 @@ export default function App() {
             </div>
           </div>
           
-          <button 
-             onClick={() => setIsHistoryOpen(true)}
-             className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors flex items-center space-x-1"
-             title="История заказов"
-          >
-             <History size={20} />
-             <span className="hidden sm:inline text-sm font-medium">История</span>
-          </button>
+          <div className="flex space-x-1">
+            <button 
+               onClick={() => setIsEarningsOpen(true)}
+               className="text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 p-2 rounded-lg transition-colors flex items-center space-x-1"
+               title="Статистика доходов"
+            >
+               <TrendingUp size={20} />
+               <span className="hidden sm:inline text-sm font-medium">Доходы</span>
+            </button>
+            <button 
+               onClick={() => setIsHistoryOpen(true)}
+               className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors flex items-center space-x-1"
+               title="История заказов"
+            >
+               <History size={20} />
+               <span className="hidden sm:inline text-sm font-medium">История</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -194,6 +206,14 @@ export default function App() {
            orders={orderHistory}
            onClose={() => setIsHistoryOpen(false)}
            onClearHistory={handleClearHistory}
+        />
+      )}
+
+      {/* Earnings Modal */}
+      {isEarningsOpen && (
+        <EarningsModal 
+           orders={orderHistory}
+           onClose={() => setIsEarningsOpen(false)}
         />
       )}
     </div>
