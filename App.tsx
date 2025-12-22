@@ -107,11 +107,18 @@ export default function App() {
     alert(`Заказ на сумму ${totalPrice} ₽ успешно сохранен!`);
   };
 
+  const scrollToSection = (id: string) => {
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <div className="bg-blue-600 text-white p-2 rounded-lg">
               <span className="font-bold text-xl tracking-tighter">П</span>
@@ -141,27 +148,51 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* Navigation Bar */}
+        <div className="max-w-6xl mx-auto px-4 pb-3 overflow-x-auto no-scrollbar">
+          <div className="flex space-x-2">
+            <button
+              onClick={() => scrollToSection(PRINTING_CATEGORY.id)}
+              className="whitespace-nowrap px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 text-sm font-medium hover:bg-blue-50 hover:text-blue-600 transition-colors border border-transparent hover:border-blue-100"
+            >
+              {PRINTING_CATEGORY.title}
+            </button>
+            {SERVICE_CATEGORIES.map(category => (
+              <button
+                key={category.id}
+                onClick={() => scrollToSection(category.id)}
+                className="whitespace-nowrap px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 text-sm font-medium hover:bg-blue-50 hover:text-blue-600 transition-colors border border-transparent hover:border-blue-100"
+              >
+                {category.title}
+              </button>
+            ))}
+          </div>
+        </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 py-8">
+      <main className="max-w-6xl mx-auto px-4 py-6">
         
         {/* Printing Section First */}
-        <PrintingSection 
-          category={PRINTING_CATEGORY}
-          quantities={quantities}
-          onQuantityChange={handleQuantityChange}
-        />
+        <div id={PRINTING_CATEGORY.id} className="scroll-mt-44">
+          <PrintingSection 
+            category={PRINTING_CATEGORY}
+            quantities={quantities}
+            onQuantityChange={handleQuantityChange}
+          />
+        </div>
 
         {/* Other Categories Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {SERVICE_CATEGORIES.map(category => (
-            <ServiceCard 
-              key={category.id}
-              category={category}
-              quantities={quantities}
-              onQuantityChange={handleQuantityChange}
-            />
+            <div key={category.id} id={category.id} className="scroll-mt-44 flex flex-col h-full">
+              <ServiceCard 
+                category={category}
+                quantities={quantities}
+                onQuantityChange={handleQuantityChange}
+              />
+            </div>
           ))}
         </div>
       </main>
