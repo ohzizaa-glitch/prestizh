@@ -18,7 +18,10 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
+  // Screen scale for preview
   const VIEWPORT_SCALE = 8; 
+  // Print scale (600 DPI approx = 23.6 pixels per mm)
+  const PRINT_DPI_SCALE = 23.622; 
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -84,18 +87,25 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
     }
   };
 
-  const draw = () => {
-    if (!canvasRef.current || !imgRef.current) return;
-    const ctx = canvasRef.current.getContext('2d');
+  const renderFrame = (
+    canvas: HTMLCanvasElement, 
+    img: HTMLImageElement, 
+    specs: PhotoSpecs, 
+    showGuidelines: boolean = true
+  ) => {
+    const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return;
 
-    const canvas = canvasRef.current;
-    const img = imgRef.current;
-    const aspectRatio = selectedVariant.widthMm / selectedVariant.heightMm;
+    const aspectRatio = specs.widthMm / specs.heightMm;
+    
+    // High quality scaling
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    if (selectedVariant.isGrayscale) {
+    if (specs.isGrayscale) {
       ctx.filter = 'grayscale(100%) contrast(1.1)';
     } else {
       ctx.filter = 'none';
@@ -107,34 +117,15 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
     const sy = (img.height * (crop.y / 100)) - (sHeight / 2);
 
     ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
-
     ctx.filter = 'none';
 
-    // GUIDELINES
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
-    
-    const tmRatio = (selectedVariant.topMarginMin + selectedVariant.topMarginMax) / 2 / selectedVariant.heightMm;
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height * tmRatio);
-    ctx.lineTo(canvas.width, canvas.height * tmRatio);
-    ctx.stroke();
-
-    const headRatio = (selectedVariant.faceHeightMin + selectedVariant.faceHeightMax) / 2 / selectedVariant.heightMm;
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height * (tmRatio + headRatio));
-    ctx.lineTo(canvas.width, canvas.height * (tmRatio + headRatio));
-    ctx.stroke();
-
-    // Corner Overlay
-    if (selectedVariant.cornerSide) {
-      ctx.setLineDash([]);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    // Corner Overlay (Always rendered as it's part of the photo)
+    if (specs.cornerSide) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 1)';
       const cornerSize = canvas.width * 0.25;
       
       ctx.beginPath();
-      if (selectedVariant.cornerSide === 'left') {
+      if (specs.cornerSide === 'left') {
         ctx.moveTo(0, canvas.height - cornerSize);
         ctx.quadraticCurveTo(cornerSize, canvas.height - cornerSize, cornerSize, canvas.height);
         ctx.lineTo(0, canvas.height);
@@ -147,10 +138,36 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
       ctx.fill();
       
       ctx.strokeStyle = '#000';
-      ctx.lineWidth = 0.5;
+      ctx.lineWidth = canvas.width * 0.002; // Dynamic line width
       ctx.stroke();
     }
+
+    // Guidelines (Only for preview)
+    if (showGuidelines) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 5]);
+      
+      const tmRatio = (specs.topMarginMin + specs.topMarginMax) / 2 / specs.heightMm;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height * tmRatio);
+      ctx.lineTo(canvas.width, canvas.height * tmRatio);
+      ctx.stroke();
+
+      const headRatio = (specs.faceHeightMin + specs.faceHeightMax) / 2 / specs.heightMm;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height * (tmRatio + headRatio));
+      ctx.lineTo(canvas.width, canvas.height * (tmRatio + headRatio));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   };
+
+  useEffect(() => {
+    if (image && canvasRef.current && imgRef.current) {
+      renderFrame(canvasRef.current, imgRef.current, selectedVariant, true);
+    }
+  }, [image, crop, selectedVariant]);
 
   useEffect(() => {
     if (image) {
@@ -158,10 +175,10 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
       img.src = image;
       img.onload = () => {
         imgRef.current = img;
-        draw();
+        if (canvasRef.current) renderFrame(canvasRef.current, img, selectedVariant, true);
       };
     }
-  }, [image, crop, selectedVariant]);
+  }, [image]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
@@ -188,11 +205,27 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
   };
 
   const savePhoto = () => {
-    if (!canvasRef.current) return;
-    const link = document.createElement('a');
-    link.download = `prestige_${selectedVariant.id}.jpg`;
-    link.href = canvasRef.current.toDataURL('image/jpeg', 0.95);
-    link.click();
+    if (!imgRef.current) return;
+    
+    // Create high-resolution temporary canvas (600 DPI)
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = selectedVariant.widthMm * PRINT_DPI_SCALE;
+    exportCanvas.height = selectedVariant.heightMm * PRINT_DPI_SCALE;
+    
+    // Render without guidelines
+    renderFrame(exportCanvas, imgRef.current, selectedVariant, false);
+    
+    // Export with maximum quality
+    exportCanvas.toBlob((blob) => {
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = `prestige_${selectedVariant.id}_highres.jpg`;
+        link.href = url;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+    }, 'image/jpeg', 1.0);
   };
 
   return (
@@ -358,8 +391,9 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
               className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black shadow-xl hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center space-x-3"
             >
               <Check size={24} />
-              <span className="text-lg tracking-tighter uppercase">СКАЧАТЬ ФАЙЛ</span>
+              <span className="text-lg tracking-tighter uppercase">СКАЧАТЬ ДЛЯ ПЕЧАТИ</span>
             </button>
+            <p className="text-[9px] text-slate-400 text-center mt-3 font-medium">Качество: 600 DPI (Максимальное)</p>
           </div>
         </div>
       </div>
