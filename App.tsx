@@ -8,41 +8,54 @@ import HistoryModal from './components/HistoryModal';
 import EarningsModal from './components/EarningsModal';
 import DigitalReceiptModal from './components/DigitalReceiptModal';
 import PhotoCutter from './components/PhotoCutter';
-import { ShoppingBag, History, TrendingUp, Settings, Crop } from 'lucide-react';
+import CloudInbox from './components/CloudInbox';
+import Toast from './components/Toast';
+import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload } from 'lucide-react';
 import { PaymentMethod, Order } from './types';
 
 export default function App() {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('prestige_theme') === 'dark';
+  });
   
   // Modals States
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isEarningsOpen, setIsEarningsOpen] = useState(false);
   const [isCutterOpen, setIsCutterOpen] = useState(false);
+  const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
+  // Toast System
+  const [toasts, setToasts] = useState<{id: number, message: string, type: 'success' | 'info' | 'error'}[]>([]);
+  
+  const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
+  };
+
   const [orderHistory, setOrderHistory] = useState<Order[]>([]);
-
-  // Settings State
   const [nextReceiptNumber, setNextReceiptNumber] = useState<number>(554);
-
-  // Digital Receipt State
   const [activeDigitalOrder, setActiveDigitalOrder] = useState<Order | null>(null);
 
-  // Load state from local storage on mount
   useEffect(() => {
     const savedHistory = localStorage.getItem('prestige_order_history');
-    if (savedHistory) {
-      try {
-        setOrderHistory(JSON.parse(savedHistory));
-      } catch (e) {
-        console.error("Failed to parse history", e);
-      }
-    }
+    if (savedHistory) setOrderHistory(JSON.parse(savedHistory));
     const savedNum = localStorage.getItem('prestige_next_receipt_num');
     if (savedNum) setNextReceiptNumber(parseInt(savedNum));
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('prestige_theme', isDarkMode ? 'dark' : 'light');
+    if (isDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+  }, [isDarkMode]);
 
   const handleQuantityChange = (id: string, qty: number) => {
     setQuantities(prev => {
@@ -63,17 +76,20 @@ export default function App() {
     setQuantities({});
     setCustomPrices({});
     setIsReceiptOpen(false);
+    showToast('Корзина очищена', 'info');
   };
 
   const handleClearHistory = () => {
     setOrderHistory([]);
     localStorage.removeItem('prestige_order_history');
+    showToast('История заказов удалена', 'error');
   };
 
   const handleDeleteOrder = (orderId: string) => {
     const newHistory = orderHistory.filter(o => o.id !== orderId);
     setOrderHistory(newHistory);
     localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
+    showToast('Заказ удален из истории', 'info');
   };
 
   const handleUpdateNextReceiptNum = (val: string) => {
@@ -87,16 +103,24 @@ export default function App() {
     setOrderHistory(newHistory);
     localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
     setActiveDigitalOrder(updatedOrder);
+    showToast('Квитанция обновлена');
   };
 
-  // Flatten all items for calculation
   const allItems = useMemo(() => {
     const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items.map(i => ({ ...i, categoryId: cat.id })));
     const printingItems = PRINTING_CATEGORY.items.map(i => ({ ...i, categoryId: PRINTING_CATEGORY.id }));
     return [...standardItems, ...printingItems];
   }, []);
 
-  // Calculate total price
+  const filteredCategories = useMemo(() => {
+    if (!searchQuery.trim()) return SERVICE_CATEGORIES;
+    const query = searchQuery.toLowerCase();
+    return SERVICE_CATEGORIES.map(cat => ({
+      ...cat,
+      items: cat.items.filter(item => item.name.toLowerCase().includes(query))
+    })).filter(cat => cat.items.length > 0);
+  }, [searchQuery]);
+
   const totalPrice = useMemo(() => {
     return Object.entries(quantities).reduce((total, [key, value]) => {
       const qty = value as number;
@@ -130,9 +154,7 @@ export default function App() {
              total: qty * price,
              categoryId: item.categoryId
           };
-          
           orderItems.push(itemData);
-
           if (DIGITAL_CATEGORY_IDS.includes(item.categoryId || '')) {
             hasDigitalItems = true;
             digitalSubtotal += qty * price;
@@ -142,7 +164,6 @@ export default function App() {
     });
 
     const currentReceiptNum = nextReceiptNumber.toString().padStart(6, '0');
-
     const newOrder: Order = {
        id: Date.now().toString(),
        receiptNumber: hasDigitalItems ? currentReceiptNum : undefined,
@@ -168,161 +189,136 @@ export default function App() {
     setCustomPrices({});
 
     if (hasDigitalItems) {
-      setActiveDigitalOrder({
-        ...newOrder,
-        items: digitalOrderItems,
-        totalAmount: digitalSubtotal
-      });
+      setActiveDigitalOrder({ ...newOrder, items: digitalOrderItems, totalAmount: digitalSubtotal });
     } else {
-      alert(`Заказ на сумму ${totalPrice} ₽ успешно сохранен!`);
-    }
-  };
-
-  const scrollToSection = (id: string) => {
-    const element = document.getElementById(id);
-    if (element) {
-      const headerOffset = 160;
-      const elementPosition = element.getBoundingClientRect().top;
-      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: 'smooth'
-      });
+      showToast('Заказ успешно сохранен');
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24">
+    <div className={`min-h-screen transition-colors duration-300 dark:bg-slate-900 bg-slate-50`}>
+      <Toast toasts={toasts} />
+      
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-        <div className="max-w-6xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="bg-blue-600 text-white p-2 rounded-lg">
-              <span className="font-bold text-xl tracking-tighter">П</span>
+      <header className="sticky top-0 z-40 dark:bg-slate-800/90 bg-white/90 backdrop-blur-md border-b dark:border-slate-700 border-slate-200 shadow-sm transition-colors">
+        <div className="max-w-6xl mx-auto px-4 pt-4 pb-2">
+          <div className="flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center space-x-3">
+              <div className="bg-blue-600 text-white p-2 rounded-xl shadow-lg shadow-blue-500/20">
+                <span className="font-black text-xl tracking-tighter">П</span>
+              </div>
+              <div className="hidden sm:block">
+                <h1 className="text-lg font-black uppercase tracking-tighter leading-none dark:text-white text-slate-800">Престиж</h1>
+                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Professional Studio</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800 leading-none">Престиж</h1>
-              <p className="text-xs text-slate-500 font-medium">Калькулятор услуг</p>
+            
+            <div className="flex-grow max-w-md relative group">
+               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+               <input 
+                 type="text"
+                 placeholder="Найти услугу..."
+                 value={searchQuery}
+                 onChange={(e) => setSearchQuery(e.target.value)}
+                 className="w-full py-2.5 pl-10 pr-4 rounded-xl border dark:bg-slate-700 dark:border-slate-600 dark:text-white border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all outline-none text-sm font-medium"
+               />
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button 
+                onClick={() => setIsDarkMode(!isDarkMode)} 
+                className="p-2.5 rounded-xl dark:bg-slate-700 dark:text-yellow-400 bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
+                title="Переключить тему"
+              >
+                {isDarkMode ? <Sun size={20} /> : <Moon size={20} />}
+              </button>
+              <button 
+                onClick={() => setIsInboxOpen(true)} 
+                className="p-2.5 rounded-xl dark:bg-slate-700 dark:text-blue-400 bg-slate-100 text-blue-600 hover:bg-slate-200 transition-all"
+                title="Прием файлов от клиента"
+              >
+                <CloudUpload size={20} />
+              </button>
+              <button 
+                onClick={() => setIsCutterOpen(true)} 
+                className="p-2.5 rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all"
+                title="Резак"
+              >
+                <Crop size={20} />
+              </button>
             </div>
           </div>
           
-          <div className="flex space-x-1">
-            <button 
-               onClick={() => setIsCutterOpen(true)}
-               className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors flex items-center space-x-1 border border-blue-100 mr-2"
-               title="Инструмент обрезки фото"
-            >
-               <Crop size={20} />
-               <span className="hidden sm:inline text-sm font-bold uppercase tracking-tighter">AI-Резак</span>
-            </button>
-            <button 
-               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-               className={`p-2 rounded-lg transition-colors flex items-center space-x-1 ${isSettingsOpen ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:bg-slate-50'}`}
-               title="Настройки"
-            >
-               <Settings size={20} />
-            </button>
-            <button 
-               onClick={() => setIsEarningsOpen(true)}
-               className="text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 p-2 rounded-lg transition-colors flex items-center space-x-1"
-               title="Статистика доходов"
-            >
-               <TrendingUp size={20} />
-               <span className="hidden sm:inline text-sm font-medium">Доходы</span>
-            </button>
-            <button 
-               onClick={() => setIsHistoryOpen(true)}
-               className="text-slate-500 hover:text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors flex items-center space-x-1"
-               title="История заказов"
-            >
-               <History size={20} />
-               <span className="hidden sm:inline text-sm font-medium">История</span>
-            </button>
+          <div className="flex items-center space-x-3 overflow-x-auto no-scrollbar pb-1">
+             <button onClick={() => setIsEarningsOpen(true)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-tight dark:text-slate-400 text-slate-500 hover:text-emerald-500 transition-colors"><TrendingUp size={16}/><span>Доходы</span></button>
+             <button onClick={() => setIsHistoryOpen(true)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-tight dark:text-slate-400 text-slate-500 hover:text-blue-500 transition-colors"><History size={16}/><span>История</span></button>
+             <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-tight dark:text-slate-400 text-slate-500 hover:text-slate-900 transition-colors"><Settings size={16}/><span>Настройки</span></button>
           </div>
         </div>
 
-        {/* Quick Settings Panel */}
         {isSettingsOpen && (
-          <div className="bg-slate-50 border-b border-slate-200 py-3 px-4 animate-in slide-in-from-top duration-200">
-            <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center gap-4">
-              <div className="flex items-center space-x-3">
-                <label className="text-xs font-bold text-slate-500 uppercase">След. номер квитанции:</label>
-                <input 
-                  type="number" 
-                  value={nextReceiptNumber}
-                  onChange={(e) => handleUpdateNextReceiptNum(e.target.value)}
-                  className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-sm font-bold text-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
-                />
-              </div>
-              <p className="text-[10px] text-slate-400 italic">Номер увеличивается автоматически после каждого цифрового заказа.</p>
+          <div className="border-t dark:border-slate-700 border-slate-200 py-3 px-4 dark:bg-slate-800 bg-slate-50">
+            <div className="max-w-6xl mx-auto flex items-center space-x-4">
+              <label className="text-[10px] font-black uppercase tracking-widest dark:text-slate-400 text-slate-500">Квитанция №:</label>
+              <input 
+                type="number" 
+                value={nextReceiptNumber} 
+                onChange={(e) => handleUpdateNextReceiptNum(e.target.value)} 
+                className="w-24 rounded border dark:bg-slate-700 dark:border-slate-600 dark:text-blue-400 border-slate-200 bg-white px-2 py-1 text-sm font-bold text-blue-600 outline-none"
+              />
             </div>
           </div>
         )}
-
-        {/* Navigation Bar */}
-        <div className="max-w-6xl mx-auto px-4 pb-3 overflow-x-auto no-scrollbar">
-          <div className="flex space-x-2">
-            <button
-              onClick={() => scrollToSection(PRINTING_CATEGORY.id)}
-              className="whitespace-nowrap px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 text-sm font-medium hover:bg-blue-50 hover:text-blue-600 transition-colors border border-transparent hover:border-blue-100"
-            >
-              {PRINTING_CATEGORY.title}
-            </button>
-            {SERVICE_CATEGORIES.map(category => (
-              <button
-                key={category.id}
-                onClick={() => scrollToSection(category.id)}
-                className="whitespace-nowrap px-4 py-1.5 rounded-full bg-slate-100 text-slate-600 text-sm font-medium hover:bg-blue-50 hover:text-blue-600 transition-colors border border-transparent hover:border-blue-100"
-              >
-                {category.title}
-              </button>
-            ))}
-          </div>
-        </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        <div id={PRINTING_CATEGORY.id} className="scroll-mt-44 mb-8">
+      <main className="max-w-6xl mx-auto px-4 py-8 pb-32">
+        {!searchQuery && (
           <PrintingSection 
-            category={PRINTING_CATEGORY}
-            quantities={quantities}
-            onQuantityChange={handleQuantityChange}
+            category={PRINTING_CATEGORY} 
+            quantities={quantities} 
+            onQuantityChange={handleQuantityChange} 
+            isDarkMode={isDarkMode}
           />
-        </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {SERVICE_CATEGORIES.map(category => (
-            <div key={category.id} id={category.id} className="scroll-mt-44 flex flex-col h-full">
-              <ServiceCard 
-                category={category}
-                quantities={quantities}
-                customPrices={customPrices}
-                onQuantityChange={handleQuantityChange}
-                onPriceChange={handlePriceChange}
-              />
-            </div>
+          {filteredCategories.map(category => (
+            <ServiceCard 
+              key={category.id}
+              category={category} 
+              quantities={quantities} 
+              customPrices={customPrices} 
+              onQuantityChange={handleQuantityChange} 
+              onPriceChange={handlePriceChange}
+              isDarkMode={isDarkMode}
+            />
           ))}
+          {filteredCategories.length === 0 && (
+            <div className="col-span-full py-20 text-center opacity-40 dark:text-white">
+              <Search size={64} className="mx-auto mb-4" />
+              <p className="text-xl font-bold">Ничего не найдено</p>
+            </div>
+          )}
         </div>
       </main>
 
       {/* Sticky Bottom Bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-40 p-4 safe-area-bottom">
+      <div className="fixed bottom-0 left-0 right-0 border-t dark:bg-slate-800 dark:border-slate-700 bg-white border-slate-200 shadow-2xl z-40 p-4 safe-area-bottom transition-colors">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
           <div>
-            <p className="text-slate-500 text-sm mb-1">Итого к оплате:</p>
-            <p className="text-3xl font-bold text-blue-600 leading-none">{totalPrice} ₽</p>
+            <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mb-1">К оплате</p>
+            <p className="text-3xl font-black tracking-tighter dark:text-white text-slate-900 leading-none">{totalPrice} <span className="text-blue-600 font-bold">₽</span></p>
           </div>
           
           <button 
             onClick={() => setIsReceiptOpen(true)}
-            className="flex items-center space-x-2 bg-slate-900 text-white py-3 px-6 rounded-xl font-semibold hover:bg-slate-800 transition-colors relative"
+            className="flex items-center space-x-3 bg-blue-600 text-white py-4 px-10 rounded-2xl font-black shadow-xl shadow-blue-500/30 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition-all relative"
           >
-            <ShoppingBag size={20} />
-            <span>Корзина</span>
+            <ShoppingBag size={24} />
+            <span className="uppercase tracking-tighter text-lg">Корзина</span>
             {totalItemsCount > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full border-2 border-white animate-bounce">
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-black w-7 h-7 flex items-center justify-center rounded-full border-4 dark:border-slate-800 border-white animate-bounce">
                 {totalItemsCount}
               </span>
             )}
@@ -333,46 +329,51 @@ export default function App() {
       {/* Modals */}
       {isReceiptOpen && (
         <Receipt 
-          items={allItems}
-          quantities={quantities}
-          customPrices={customPrices}
-          onClose={() => setIsReceiptOpen(false)}
-          onClear={handleClearCart}
-          onSaveOrder={handleSaveOrder}
+          items={allItems} 
+          quantities={quantities} 
+          customPrices={customPrices} 
+          onClose={() => setIsReceiptOpen(false)} 
+          onClear={handleClearCart} 
+          onSaveOrder={handleSaveOrder} 
+          isDarkMode={isDarkMode}
         />
       )}
-
       {isHistoryOpen && (
         <HistoryModal 
-           orders={orderHistory}
-           onClose={() => setIsHistoryOpen(false)}
-           onClearHistory={handleClearHistory}
-           onDeleteOrder={handleDeleteOrder}
-           onViewDigitalReceipt={(order) => {
-              setActiveDigitalOrder(order);
-              setIsHistoryOpen(false);
-           }}
+          orders={orderHistory} 
+          onClose={() => setIsHistoryOpen(false)} 
+          onClearHistory={handleClearHistory} 
+          onDeleteOrder={handleDeleteOrder} 
+          onViewDigitalReceipt={(order) => { setActiveDigitalOrder(order); setIsHistoryOpen(false); }} 
+          isDarkMode={isDarkMode}
         />
       )}
-
       {isEarningsOpen && (
         <EarningsModal 
-           orders={orderHistory}
-           onClose={() => setIsEarningsOpen(false)}
+          orders={orderHistory} 
+          onClose={() => setIsEarningsOpen(false)} 
+          isDarkMode={isDarkMode} 
         />
       )}
-
       {isCutterOpen && (
         <PhotoCutter 
-          onClose={() => setIsCutterOpen(false)}
+          onClose={() => setIsCutterOpen(false)} 
+          isDarkMode={isDarkMode}
         />
       )}
-
+      {isInboxOpen && (
+        <CloudInbox 
+          onClose={() => setIsInboxOpen(false)} 
+          isDarkMode={isDarkMode}
+          onNotify={showToast}
+        />
+      )}
       {activeDigitalOrder && (
         <DigitalReceiptModal 
-          order={activeDigitalOrder}
-          onClose={() => setActiveDigitalOrder(null)}
-          onUpdateOrder={updateOrderInHistory}
+          order={activeDigitalOrder} 
+          onClose={() => setActiveDigitalOrder(null)} 
+          onUpdateOrder={updateOrderInHistory} 
+          isDarkMode={isDarkMode}
         />
       )}
     </div>
