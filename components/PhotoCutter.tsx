@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { X, Upload, Check, Loader2, Maximize, Move, Info, ChevronDown } from 'lucide-react';
+import { X, Upload, Check, Loader2, Maximize, Move, Info, ChevronDown, Settings2, Ruler } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
 
@@ -14,14 +14,26 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
   const [crop, setCrop] = useState({ x: 50, y: 50, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  
+  // Custom dimensions state
+  const [isCustom, setIsCustom] = useState(false);
+  const [customWidth, setCustomWidth] = useState(30);
+  const [customHeight, setCustomHeight] = useState(40);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // Screen scale for preview
   const VIEWPORT_SCALE = 8; 
-  // Print scale (600 DPI approx = 23.6 pixels per mm)
   const PRINT_DPI_SCALE = 23.622; 
+
+  const activeSpecs = isCustom ? {
+    ...selectedVariant,
+    id: 'custom',
+    label: 'Произвольный размер',
+    widthMm: customWidth,
+    heightMm: customHeight,
+    faceHeightMin: 0, faceHeightMax: 0, topMarginMin: 0, topMarginMax: 0
+  } : selectedVariant;
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -30,13 +42,14 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
       reader.onload = (readerEvent) => {
         const dataUrl = readerEvent.target?.result as string;
         setImage(dataUrl);
-        autoAlign(dataUrl, selectedVariant);
+        autoAlign(dataUrl, activeSpecs);
       };
       reader.readAsDataURL(file);
     }
   };
 
   const autoAlign = async (dataUrl: string, specs: PhotoSpecs) => {
+    if (isCustom) return; // Skip AI for purely custom sizes as requirements are unknown
     setIsProcessing(true);
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -60,8 +73,8 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
         const [ymin, xmin, ymax, xmax] = JSON.parse(match[0]);
         
         const headHeightNorm = ymax - ymin;
-        const targetFaceMm = (specs.faceHeightMin + specs.faceHeightMax) / 2;
-        const targetTopMm = (specs.topMarginMin + specs.topMarginMax) / 2;
+        const targetFaceMm = specs.faceHeightMin ? (specs.faceHeightMin + specs.faceHeightMax) / 2 : specs.heightMm * 0.6;
+        const targetTopMm = specs.topMarginMin ? (specs.topMarginMin + specs.topMarginMax) / 2 : specs.heightMm * 0.1;
         
         const totalHeightNorm = headHeightNorm * (specs.heightMm / targetFaceMm);
         const topMarginNorm = totalHeightNorm * (targetTopMm / specs.heightMm);
@@ -97,8 +110,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
     if (!ctx) return;
 
     const aspectRatio = specs.widthMm / specs.heightMm;
-    
-    // High quality scaling
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
 
@@ -119,11 +130,9 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
     ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
     ctx.filter = 'none';
 
-    // Corner Overlay (Always rendered as it's part of the photo)
     if (specs.cornerSide) {
       ctx.fillStyle = 'rgba(255, 255, 255, 1)';
       const cornerSize = canvas.width * 0.25;
-      
       ctx.beginPath();
       if (specs.cornerSide === 'left') {
         ctx.moveTo(0, canvas.height - cornerSize);
@@ -136,49 +145,47 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
       }
       ctx.closePath();
       ctx.fill();
-      
       ctx.strokeStyle = '#000';
-      ctx.lineWidth = canvas.width * 0.002; // Dynamic line width
+      ctx.lineWidth = canvas.width * 0.002;
       ctx.stroke();
     }
 
-    // Guidelines (Only for preview)
-    if (showGuidelines) {
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
-      
+    if (showGuidelines && !isCustom) {
+      // High contrast guidelines (Black outline + Cyan dash)
       const tmRatio = (specs.topMarginMin + specs.topMarginMax) / 2 / specs.heightMm;
-      ctx.beginPath();
-      ctx.moveTo(0, canvas.height * tmRatio);
-      ctx.lineTo(canvas.width, canvas.height * tmRatio);
-      ctx.stroke();
-
       const headRatio = (specs.faceHeightMin + specs.faceHeightMax) / 2 / specs.heightMm;
-      ctx.beginPath();
-      ctx.moveTo(0, canvas.height * (tmRatio + headRatio));
-      ctx.lineTo(canvas.width, canvas.height * (tmRatio + headRatio));
-      ctx.stroke();
+      
+      const drawLine = (y: number) => {
+        // Shadow line for contrast
+        ctx.setLineDash([]);
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+
+        // Main colored dashed line
+        ctx.setLineDash([8, 4]);
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      };
+
+      drawLine(canvas.height * tmRatio);
+      drawLine(canvas.height * (tmRatio + headRatio));
       ctx.setLineDash([]);
     }
   };
 
   useEffect(() => {
     if (image && canvasRef.current && imgRef.current) {
-      renderFrame(canvasRef.current, imgRef.current, selectedVariant, true);
+      renderFrame(canvasRef.current, imgRef.current, activeSpecs, true);
     }
-  }, [image, crop, selectedVariant]);
-
-  useEffect(() => {
-    if (image) {
-      const img = new Image();
-      img.src = image;
-      img.onload = () => {
-        imgRef.current = img;
-        if (canvasRef.current) renderFrame(canvasRef.current, img, selectedVariant, true);
-      };
-    }
-  }, [image]);
+  }, [image, crop, selectedVariant, customWidth, customHeight, isCustom]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
@@ -201,26 +208,20 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.95 : 1.05;
-    setCrop(prev => ({ ...prev, scale: Math.max(0.1, Math.min(30, prev.scale * delta)) }));
+    setCrop(prev => ({ ...prev, scale: Math.max(0.1, Math.min(50, prev.scale * delta)) }));
   };
 
   const savePhoto = () => {
     if (!imgRef.current) return;
-    
-    // Create high-resolution temporary canvas (600 DPI)
     const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = selectedVariant.widthMm * PRINT_DPI_SCALE;
-    exportCanvas.height = selectedVariant.heightMm * PRINT_DPI_SCALE;
-    
-    // Render without guidelines
-    renderFrame(exportCanvas, imgRef.current, selectedVariant, false);
-    
-    // Export with maximum quality
+    exportCanvas.width = activeSpecs.widthMm * PRINT_DPI_SCALE;
+    exportCanvas.height = activeSpecs.heightMm * PRINT_DPI_SCALE;
+    renderFrame(exportCanvas, imgRef.current, activeSpecs, false);
     exportCanvas.toBlob((blob) => {
       if (blob) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
-        link.download = `prestige_${selectedVariant.id}_highres.jpg`;
+        link.download = `prestige_${activeSpecs.id}_highres.jpg`;
         link.href = url;
         link.click();
         URL.revokeObjectURL(url);
@@ -230,10 +231,10 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-4 animate-in fade-in duration-300">
-      <div className="bg-white w-full max-w-5xl rounded-[2.5rem] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.5)] flex flex-col md:flex-row overflow-hidden max-h-[95vh]">
+      <div className="bg-white w-full max-w-6xl rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[95vh]">
         
         {/* Workspace */}
-        <div className="flex-[3] bg-slate-100 flex items-center justify-center p-6 relative group cursor-move overflow-hidden"
+        <div className="flex-[2.5] bg-slate-100 flex items-center justify-center p-6 relative group cursor-move overflow-hidden"
              onMouseDown={handleMouseDown}
              onMouseMove={handleMouseMove}
              onMouseUp={() => setIsDragging(false)}
@@ -244,22 +245,17 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
             <div className="relative border-[12px] border-white shadow-2xl bg-white transition-all duration-300">
               <canvas 
                 ref={canvasRef} 
-                width={selectedVariant.widthMm * VIEWPORT_SCALE} 
-                height={selectedVariant.heightMm * VIEWPORT_SCALE}
+                width={activeSpecs.widthMm * VIEWPORT_SCALE} 
+                height={activeSpecs.heightMm * VIEWPORT_SCALE}
                 className="bg-white max-h-[70vh] w-auto"
-                style={{
-                   width: selectedVariant.widthMm * (VIEWPORT_SCALE / 2) + 'px'
-                }}
+                style={{ width: activeSpecs.widthMm * (VIEWPORT_SCALE / 2) + 'px' }}
               />
               <div className="absolute inset-0 pointer-events-none border border-blue-500/10"></div>
               
               {isProcessing && (
                 <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center">
-                  <div className="relative">
-                    <Loader2 className="text-blue-600 animate-spin mb-4" size={48} />
-                    <div className="absolute inset-0 text-blue-100/30 animate-pulse"><Loader2 size={48} /></div>
-                  </div>
-                  <span className="text-blue-700 font-black text-sm uppercase tracking-widest animate-pulse">ИИ рассчитывает пропорции...</span>
+                  <Loader2 className="text-blue-600 animate-spin mb-4" size={48} />
+                  <span className="text-blue-700 font-black text-sm uppercase tracking-widest animate-pulse">Анализ лица...</span>
                 </div>
               )}
             </div>
@@ -268,44 +264,22 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
               <div className="bg-blue-100 p-6 rounded-full mb-6 text-blue-600 shadow-inner">
                  <Upload size={48} />
               </div>
-              <span className="text-slate-700 font-bold text-lg">Загрузите фотографию</span>
-              <span className="text-slate-400 text-sm mt-2">AI сам найдет лицо и выставит отступы</span>
+              <span className="text-slate-700 font-bold text-lg text-center leading-tight">Загрузите фото<br/><span className="text-slate-400 font-medium text-sm">AI автоматически выставит масштаб</span></span>
               <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
             </label>
           )}
-
-          {image && !isProcessing && (
-            <div className="absolute top-6 left-6 bg-black/60 backdrop-blur text-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center space-x-2">
-               <span className="w-2 h-2 rounded-full bg-green-400 animate-ping"></span>
-               <span>Направляющие ГОСТ включены</span>
-            </div>
-          )}
-
-          {/* Controls */}
-          <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center space-x-4 bg-white/90 backdrop-blur-md shadow-2xl rounded-2xl px-6 py-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0">
-            <div className="flex items-center space-x-1">
-               <button onClick={() => setCrop(p => ({ ...p, scale: p.scale * 0.9 }))} className="p-2 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"><Maximize size={16} /></button>
-               <span className="text-[10px] font-black text-slate-400 w-8 text-center">{Math.round(crop.scale * 100)}%</span>
-               <button onClick={() => setCrop(p => ({ ...p, scale: p.scale * 1.1 }))} className="p-2 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"><Maximize size={20} /></button>
-            </div>
-            <div className="w-px h-6 bg-slate-200"></div>
-            <div className="flex items-center space-x-2">
-               <Move size={18} className="text-blue-500" />
-               <span className="text-[10px] text-slate-500 font-black uppercase tracking-tighter leading-none">Тащите мышь<br/>для сдвига</span>
-            </div>
-          </div>
         </div>
 
         {/* Sidebar */}
-        <div className="flex-[1.2] p-8 flex flex-col border-l border-slate-100 bg-white overflow-y-auto">
-          <div className="flex justify-between items-start mb-8">
+        <div className="flex-[1.2] p-6 flex flex-col border-l border-slate-100 bg-white overflow-y-auto">
+          <div className="flex justify-between items-start mb-6">
             <div>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center">
-                ПРЕСТИЖ <span className="ml-2 text-blue-600">РЕЗАК</span>
+              <h2 className="text-xl font-black text-slate-900 tracking-tighter flex items-center uppercase">
+                ПРЕСТИЖ <span className="ml-1.5 text-blue-600">РЕЗАК</span>
               </h2>
-              <div className="flex items-center mt-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-2"></span>
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">AI Vision Powered</span>
+              <div className="flex items-center mt-0.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Vision Engine v2.0</span>
               </div>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
@@ -313,17 +287,23 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
             </button>
           </div>
 
-          <div className="space-y-6 flex-grow">
+          <div className="space-y-5 flex-grow">
+            {/* Format Selector */}
             <div className="space-y-2">
                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Тип документа</label>
                <div className="relative">
                  <select 
-                    value={selectedVariant.id}
+                    value={isCustom ? 'custom' : selectedVariant.id}
                     onChange={(e) => {
-                       const v = PHOTO_VARIANTS.find(x => x.id === e.target.value);
-                       if (v) {
-                          setSelectedVariant(v);
-                          if (image) autoAlign(image, v);
+                       if (e.target.value === 'custom') {
+                         setIsCustom(true);
+                       } else {
+                         setIsCustom(false);
+                         const v = PHOTO_VARIANTS.find(x => x.id === e.target.value);
+                         if (v) {
+                            setSelectedVariant(v);
+                            if (image) autoAlign(image, v);
+                         }
                        }
                     }}
                     className="w-full appearance-none bg-slate-50 border-2 border-slate-100 text-slate-900 font-bold py-3 px-4 pr-10 rounded-2xl focus:outline-none focus:border-blue-500 transition-all cursor-pointer text-sm"
@@ -331,69 +311,122 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
                    {PHOTO_VARIANTS.map(v => (
                      <option key={v.id} value={v.id}>{v.label}</option>
                    ))}
+                   <option value="custom">Произвольный размер...</option>
                  </select>
                  <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                </div>
             </div>
 
-            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
-               <div className="flex items-center text-blue-600 mb-2">
-                 <Info size={16} className="mr-2" />
-                 <span className="text-xs font-black uppercase tracking-wider">Параметры ГОСТ</span>
+            {/* Custom Inputs */}
+            {isCustom && (
+              <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 animate-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center text-blue-700 mb-3 text-[10px] font-black uppercase tracking-widest">
+                  <Ruler size={14} className="mr-2" /> Свои размеры (мм)
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                   <div>
+                     <label className="text-[9px] text-slate-400 font-bold mb-1 block">Ширина</label>
+                     <input 
+                       type="number" 
+                       value={customWidth} 
+                       onChange={(e) => setCustomWidth(Math.max(1, parseInt(e.target.value) || 0))}
+                       className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                     />
+                   </div>
+                   <div>
+                     <label className="text-[9px] text-slate-400 font-bold mb-1 block">Высота</label>
+                     <input 
+                       type="number" 
+                       value={customHeight} 
+                       onChange={(e) => setCustomHeight(Math.max(1, parseInt(e.target.value) || 0))}
+                       className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                     />
+                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Manual Adjustments Block */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
+               <div className="flex items-center text-slate-600 mb-1 text-[10px] font-black uppercase tracking-widest">
+                 <Settings2 size={14} className="mr-2" /> Точная настройка
                </div>
                
-               <div className="grid grid-cols-2 gap-y-3">
+               <div className="space-y-3">
+                  {/* Scale Input */}
                   <div>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase">Размер</p>
-                    <p className="text-xs font-bold text-slate-700">{selectedVariant.widthMm} x {selectedVariant.heightMm} мм</p>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-[9px] text-slate-400 font-bold uppercase">Масштаб (%)</label>
+                      <span className="text-[10px] font-black text-blue-600">{Math.round(crop.scale * 100)}%</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                       <input 
+                         type="range" min="0.1" max="10" step="0.01"
+                         value={crop.scale} 
+                         onChange={(e) => setCrop(p => ({ ...p, scale: parseFloat(e.target.value) }))}
+                         className="flex-grow accent-blue-600 h-1"
+                       />
+                       <input 
+                         type="number" step="1"
+                         value={Math.round(crop.scale * 100)} 
+                         onChange={(e) => setCrop(p => ({ ...p, scale: (parseInt(e.target.value) || 0) / 100 }))}
+                         className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-center"
+                       />
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase">Лицо</p>
-                    <p className="text-xs font-bold text-slate-700">{selectedVariant.faceHeightMin === selectedVariant.faceHeightMax ? selectedVariant.faceHeightMin : `${selectedVariant.faceHeightMin}-${selectedVariant.faceHeightMax}`} мм</p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase">Отступ сверху</p>
-                    <p className="text-xs font-bold text-slate-700">{selectedVariant.topMarginMin === selectedVariant.topMarginMax ? selectedVariant.topMarginMin : `${selectedVariant.topMarginMin}-${selectedVariant.topMarginMax}`} мм</p>
-                  </div>
-                  <div>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase">Стиль</p>
-                    <p className="text-xs font-bold text-slate-700">{selectedVariant.isGrayscale ? 'Черно-белое' : 'Цветное'}</p>
+
+                  {/* Offset Inputs */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[9px] text-slate-400 font-bold mb-1 block uppercase">Сдвиг X (%)</label>
+                      <input 
+                         type="number" step="0.1"
+                         value={crop.x.toFixed(1)} 
+                         onChange={(e) => setCrop(p => ({ ...p, x: parseFloat(e.target.value) || 0 }))}
+                         className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-center"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[9px] text-slate-400 font-bold mb-1 block uppercase">Сдвиг Y (%)</label>
+                      <input 
+                         type="number" step="0.1"
+                         value={crop.y.toFixed(1)} 
+                         onChange={(e) => setCrop(p => ({ ...p, y: parseFloat(e.target.value) || 0 }))}
+                         className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-center"
+                      />
+                    </div>
                   </div>
                </div>
-
-               <p className="text-[10px] text-slate-400 leading-relaxed italic border-t border-slate-200 pt-3">
-                 {selectedVariant.description}
-               </p>
             </div>
 
-            <div className="space-y-3">
-               <label className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-2xl border-2 border-slate-100 text-slate-600 font-black text-xs hover:bg-slate-50 transition-all cursor-pointer uppercase tracking-tighter">
-                  <Upload size={16} />
-                  <span>Другое фото</span>
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
-               </label>
-               {image && (
-                 <button 
-                   onClick={() => autoAlign(image, selectedVariant)}
-                   className="w-full flex items-center justify-center space-x-2 py-3 rounded-2xl bg-blue-50 text-blue-600 font-black text-xs hover:bg-blue-100 transition-all uppercase tracking-tighter"
-                 >
-                    <Loader2 className={isProcessing ? "animate-spin" : ""} size={16} />
-                    <span>AI-Перерасчет</span>
-                 </button>
-               )}
-            </div>
+            {/* AI Align Button (only for presets) */}
+            {!isCustom && image && (
+               <button 
+                 onClick={() => autoAlign(image, selectedVariant)}
+                 className="w-full flex items-center justify-center space-x-2 py-3 rounded-2xl bg-blue-50 text-blue-600 font-black text-[10px] hover:bg-blue-100 transition-all uppercase tracking-widest border border-blue-100"
+               >
+                  <Loader2 className={isProcessing ? "animate-spin" : ""} size={14} />
+                  <span>Пересчитать ИИ</span>
+               </button>
+            )}
+
+            <label className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-2xl border-2 border-slate-100 text-slate-500 font-black text-[10px] hover:bg-slate-50 transition-all cursor-pointer uppercase tracking-widest">
+               <Upload size={14} />
+               <span>Другое фото</span>
+               <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+            </label>
           </div>
 
-          <div className="pt-8 mt-4 border-t border-slate-100">
+          <div className="pt-6 mt-4 border-t border-slate-100">
             <button 
               onClick={savePhoto}
               disabled={!image || isProcessing}
-              className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black shadow-xl hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center space-x-3"
+              className="w-full py-4 bg-blue-600 text-white rounded-3xl font-black shadow-xl hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center space-x-3"
             >
-              <Check size={24} />
-              <span className="text-lg tracking-tighter uppercase">СКАЧАТЬ ДЛЯ ПЕЧАТИ</span>
+              <Check size={22} />
+              <span className="text-base tracking-tighter uppercase">СКАЧАТЬ JPG</span>
             </button>
-            <p className="text-[9px] text-slate-400 text-center mt-3 font-medium">Качество: 600 DPI (Максимальное)</p>
+            <p className="text-[9px] text-slate-400 text-center mt-3 font-medium uppercase tracking-tighter">Линии разметки не будут видны на файле</p>
           </div>
         </div>
       </div>
