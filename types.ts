@@ -33,6 +33,7 @@ export type PaymentMethod = 'cash' | 'card';
 
 export interface Order {
   id: string;
+  receiptNumber?: string;
   date: string; // ISO string
   timestamp: number;
   items: {
@@ -41,6 +42,7 @@ export interface Order {
     price: number;
     quantity: number;
     total: number;
+    categoryId?: string; // To distinguish digital services later
   }[];
   totalAmount: number;
   paymentMethod: PaymentMethod;

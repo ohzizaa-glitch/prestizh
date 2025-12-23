@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { ServiceCategory, ServiceVariant } from './types';
 
+export const DIGITAL_CATEGORY_IDS = ['docs', 'processing', 'scanning', 'transfer_files', 'transfer_data', 'video'];
+
 export const PHOTO_VARIANTS: ServiceVariant[] = [
   { id: '3x4', label: '3 × 4 см', description: 'Медицинская книжка, Пропуск, Разрешение на оружие (РОХа)' },
   { id: '3.5x4.5', label: '3,5 × 4,5 см', description: 'Паспорт РФ, Визы, Водительские права' },

@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { SERVICE_CATEGORIES, PRINTING_CATEGORY, PHOTO_VARIANTS } from './constants';
+import { SERVICE_CATEGORIES, PRINTING_CATEGORY, PHOTO_VARIANTS, DIGITAL_CATEGORY_IDS } from './constants';
 import ServiceCard from './components/ServiceCard';
 import PrintingSection from './components/PrintingSection';
 import Receipt from './components/Receipt';
 import HistoryModal from './components/HistoryModal';
 import EarningsModal from './components/EarningsModal';
+import DigitalReceiptModal from './components/DigitalReceiptModal';
 import { ShoppingBag, History, TrendingUp } from 'lucide-react';
 import { PaymentMethod, Order } from './types';
 
@@ -19,6 +20,9 @@ export default function App() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isEarningsOpen, setIsEarningsOpen] = useState(false);
   const [orderHistory, setOrderHistory] = useState<Order[]>([]);
+
+  // Digital Receipt State
+  const [activeDigitalOrder, setActiveDigitalOrder] = useState<Order | null>(null);
 
   // Load history from local storage on mount
   useEffect(() => {
@@ -60,12 +64,12 @@ export default function App() {
 
   // Flatten all items for calculation
   const allItems = useMemo(() => {
-    const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items);
-    const printingItems = PRINTING_CATEGORY.items;
+    const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items.map(i => ({ ...i, categoryId: cat.id })));
+    const printingItems = PRINTING_CATEGORY.items.map(i => ({ ...i, categoryId: PRINTING_CATEGORY.id }));
     return [...standardItems, ...printingItems];
   }, []);
 
-  // Calculate total price accounting for composite keys and custom prices
+  // Calculate total price
   const totalPrice = useMemo(() => {
     return Object.entries(quantities).reduce((total, [key, value]) => {
       const qty = value as number;
@@ -80,6 +84,9 @@ export default function App() {
 
   const handleSaveOrder = (paymentMethod: PaymentMethod) => {
     const orderItems: Order['items'] = [];
+    let hasDigitalItems = false;
+    let digitalSubtotal = 0;
+    const digitalOrderItems: Order['items'] = [];
     
     Object.entries(quantities).forEach(([key, value]) => {
        const qty = value as number;
@@ -88,18 +95,31 @@ export default function App() {
        if(item) {
           const variant = variantId ? PHOTO_VARIANTS.find(v => v.id === variantId) : undefined;
           const price = item.isPriceEditable ? (customPrices[itemId] || 0) : item.price;
-          orderItems.push({
+          const itemData = {
              name: item.name,
              variant: variant?.label,
              price: price,
              quantity: qty,
-             total: qty * price
-          });
+             total: qty * price,
+             categoryId: item.categoryId
+          };
+          
+          orderItems.push(itemData);
+
+          // Check if it belongs to digital category
+          if (DIGITAL_CATEGORY_IDS.includes(item.categoryId || '')) {
+            hasDigitalItems = true;
+            digitalSubtotal += qty * price;
+            digitalOrderItems.push(itemData);
+          }
        }
     });
 
+    const receiptNum = (orderHistory.length + 554).toString().padStart(6, '0'); // Simulate continuous numbering
+
     const newOrder: Order = {
        id: Date.now().toString(),
+       receiptNumber: receiptNum,
        date: new Date().toISOString(),
        timestamp: Date.now(),
        items: orderItems,
@@ -114,13 +134,22 @@ export default function App() {
     // Clear cart after save
     setQuantities({});
     setCustomPrices({});
-    alert(`Заказ на сумму ${totalPrice} ₽ успешно сохранен!`);
+
+    // If there are digital items, prepare and show the special receipt
+    if (hasDigitalItems) {
+      setActiveDigitalOrder({
+        ...newOrder,
+        items: digitalOrderItems,
+        totalAmount: digitalSubtotal
+      });
+    } else {
+      alert(`Заказ на сумму ${totalPrice} ₽ успешно сохранен!`);
+    }
   };
 
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
-      // Offset for sticky header
       const headerOffset = 160;
       const elementPosition = element.getBoundingClientRect().top;
       const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
@@ -191,8 +220,6 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 py-6">
-        
-        {/* Printing Section First */}
         <div id={PRINTING_CATEGORY.id} className="scroll-mt-44 mb-8">
           <PrintingSection 
             category={PRINTING_CATEGORY}
@@ -201,7 +228,6 @@ export default function App() {
           />
         </div>
 
-        {/* Other Categories Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {SERVICE_CATEGORIES.map(category => (
             <div key={category.id} id={category.id} className="scroll-mt-44 flex flex-col h-full">
@@ -240,7 +266,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Receipt Modal */}
+      {/* Modals */}
       {isReceiptOpen && (
         <Receipt 
           items={allItems}
@@ -252,7 +278,6 @@ export default function App() {
         />
       )}
 
-      {/* History Modal */}
       {isHistoryOpen && (
         <HistoryModal 
            orders={orderHistory}
@@ -261,11 +286,18 @@ export default function App() {
         />
       )}
 
-      {/* Earnings Modal */}
       {isEarningsOpen && (
         <EarningsModal 
            orders={orderHistory}
            onClose={() => setIsEarningsOpen(false)}
+        />
+      )}
+
+      {/* The Printable Digital Receipt Modal */}
+      {activeDigitalOrder && (
+        <DigitalReceiptModal 
+          order={activeDigitalOrder}
+          onClose={() => setActiveDigitalOrder(null)}
         />
       )}
     </div>
