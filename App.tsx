@@ -6,13 +6,11 @@ import Receipt from './components/Receipt';
 import HistoryModal from './components/HistoryModal';
 import EarningsModal from './components/EarningsModal';
 import DigitalReceiptModal from './components/DigitalReceiptModal';
-import { ShoppingBag, History, TrendingUp } from 'lucide-react';
+import { ShoppingBag, History, TrendingUp, Settings } from 'lucide-react';
 import { PaymentMethod, Order } from './types';
 
 export default function App() {
-  // Store quantities as { [itemId or itemId__variantId]: number }
   const [quantities, setQuantities] = useState<Record<string, number>>({});
-  // Store custom prices for editable items: { [itemId]: price }
   const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   
@@ -21,10 +19,14 @@ export default function App() {
   const [isEarningsOpen, setIsEarningsOpen] = useState(false);
   const [orderHistory, setOrderHistory] = useState<Order[]>([]);
 
+  // Settings State
+  const [nextReceiptNumber, setNextReceiptNumber] = useState<number>(554);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   // Digital Receipt State
   const [activeDigitalOrder, setActiveDigitalOrder] = useState<Order | null>(null);
 
-  // Load history from local storage on mount
+  // Load state from local storage on mount
   useEffect(() => {
     const savedHistory = localStorage.getItem('prestige_order_history');
     if (savedHistory) {
@@ -34,6 +36,8 @@ export default function App() {
         console.error("Failed to parse history", e);
       }
     }
+    const savedNum = localStorage.getItem('prestige_next_receipt_num');
+    if (savedNum) setNextReceiptNumber(parseInt(savedNum));
   }, []);
 
   const handleQuantityChange = (id: string, qty: number) => {
@@ -60,6 +64,19 @@ export default function App() {
   const handleClearHistory = () => {
     setOrderHistory([]);
     localStorage.removeItem('prestige_order_history');
+  };
+
+  const handleUpdateNextReceiptNum = (val: string) => {
+    const num = parseInt(val) || 1;
+    setNextReceiptNumber(num);
+    localStorage.setItem('prestige_next_receipt_num', num.toString());
+  };
+
+  const updateOrderInHistory = (updatedOrder: Order) => {
+    const newHistory = orderHistory.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+    setOrderHistory(newHistory);
+    localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
+    setActiveDigitalOrder(updatedOrder);
   };
 
   // Flatten all items for calculation
@@ -106,7 +123,6 @@ export default function App() {
           
           orderItems.push(itemData);
 
-          // Check if it belongs to digital category
           if (DIGITAL_CATEGORY_IDS.includes(item.categoryId || '')) {
             hasDigitalItems = true;
             digitalSubtotal += qty * price;
@@ -115,27 +131,32 @@ export default function App() {
        }
     });
 
-    const receiptNum = (orderHistory.length + 554).toString().padStart(6, '0'); // Simulate continuous numbering
+    const currentReceiptNum = nextReceiptNumber.toString().padStart(6, '0');
 
     const newOrder: Order = {
        id: Date.now().toString(),
-       receiptNumber: receiptNum,
+       receiptNumber: hasDigitalItems ? currentReceiptNum : undefined,
        date: new Date().toISOString(),
+       issueDate: new Date().toISOString(), // Same as order by default
        timestamp: Date.now(),
        items: orderItems,
        totalAmount: totalPrice,
        paymentMethod
     };
 
+    if (hasDigitalItems) {
+      const nextNum = nextReceiptNumber + 1;
+      setNextReceiptNumber(nextNum);
+      localStorage.setItem('prestige_next_receipt_num', nextNum.toString());
+    }
+
     const newHistory = [newOrder, ...orderHistory];
     setOrderHistory(newHistory);
     localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
     
-    // Clear cart after save
     setQuantities({});
     setCustomPrices({});
 
-    // If there are digital items, prepare and show the special receipt
     if (hasDigitalItems) {
       setActiveDigitalOrder({
         ...newOrder,
@@ -178,6 +199,13 @@ export default function App() {
           
           <div className="flex space-x-1">
             <button 
+               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+               className={`p-2 rounded-lg transition-colors flex items-center space-x-1 ${isSettingsOpen ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:bg-slate-50'}`}
+               title="Настройки"
+            >
+               <Settings size={20} />
+            </button>
+            <button 
                onClick={() => setIsEarningsOpen(true)}
                className="text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 p-2 rounded-lg transition-colors flex items-center space-x-1"
                title="Статистика доходов"
@@ -195,6 +223,24 @@ export default function App() {
             </button>
           </div>
         </div>
+
+        {/* Quick Settings Panel */}
+        {isSettingsOpen && (
+          <div className="bg-slate-50 border-b border-slate-200 py-3 px-4 animate-in slide-in-from-top duration-200">
+            <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center gap-4">
+              <div className="flex items-center space-x-3">
+                <label className="text-xs font-bold text-slate-500 uppercase">След. номер квитанции:</label>
+                <input 
+                  type="number" 
+                  value={nextReceiptNumber}
+                  onChange={(e) => handleUpdateNextReceiptNum(e.target.value)}
+                  className="w-24 bg-white border border-slate-200 rounded px-2 py-1 text-sm font-bold text-blue-600 focus:ring-2 focus:ring-blue-100 outline-none"
+                />
+              </div>
+              <p className="text-[10px] text-slate-400 italic">Номер увеличивается автоматически после каждого цифрового заказа.</p>
+            </div>
+          </div>
+        )}
 
         {/* Navigation Bar */}
         <div className="max-w-6xl mx-auto px-4 pb-3 overflow-x-auto no-scrollbar">
@@ -283,6 +329,10 @@ export default function App() {
            orders={orderHistory}
            onClose={() => setIsHistoryOpen(false)}
            onClearHistory={handleClearHistory}
+           onViewDigitalReceipt={(order) => {
+              setActiveDigitalOrder(order);
+              setIsHistoryOpen(false);
+           }}
         />
       )}
 
@@ -293,11 +343,11 @@ export default function App() {
         />
       )}
 
-      {/* The Printable Digital Receipt Modal */}
       {activeDigitalOrder && (
         <DigitalReceiptModal 
           order={activeDigitalOrder}
           onClose={() => setActiveDigitalOrder(null)}
+          onUpdateOrder={updateOrderInHistory}
         />
       )}
     </div>

@@ -1,23 +1,49 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Order } from '../types';
-import { X, Printer } from 'lucide-react';
+import { X, Printer, Save } from 'lucide-react';
 
 interface DigitalReceiptModalProps {
   order: Order;
   onClose: () => void;
+  onUpdateOrder: (updatedOrder: Order) => void;
 }
 
-const DigitalReceiptModal: React.FC<DigitalReceiptModalProps> = ({ order, onClose }) => {
+const DigitalReceiptModal: React.FC<DigitalReceiptModalProps> = ({ order, onClose, onUpdateOrder }) => {
+  const [receiptNum, setReceiptNum] = useState(order.receiptNumber || '');
+  
+  // Use separate string states for manual entry to avoid Date object jumping
+  const initialDate = new Date(order.issueDate || order.date);
+  const [issueDay, setIssueDay] = useState(initialDate.getDate().toString().padStart(2, '0'));
+  const [issueMonth, setIssueMonth] = useState((initialDate.getMonth() + 1).toString().padStart(2, '0'));
+  const [issueYear, setIssueYear] = useState(initialDate.getFullYear().toString().slice(-2));
+
   const handlePrint = () => {
     window.print();
   };
 
-  // Filter only digital items as requested
-  const digitalItems = order.items; 
-  // Note: in the real app, we already pre-filtered this order if it was created for digital receipt.
-  
-  const formattedDate = new Date(order.timestamp).toLocaleDateString('ru-RU');
-  const [day, month, year] = formattedDate.split('.');
+  const handleSave = () => {
+    // Construct valid ISO string from our parts before saving
+    const fullYear = 2000 + parseInt(issueYear);
+    const monthIdx = parseInt(issueMonth) - 1;
+    const dayNum = parseInt(issueDay);
+    
+    const newDate = new Date(fullYear, monthIdx, dayNum);
+    
+    if (isNaN(newDate.getTime())) {
+      alert('Ошибка: Введена некорректная дата');
+      return;
+    }
+
+    onUpdateOrder({
+      ...order,
+      receiptNumber: receiptNum,
+      issueDate: newDate.toISOString()
+    });
+    alert('Изменения в квитанции сохранены');
+  };
+
+  const formattedOrderDate = new Date(order.timestamp).toLocaleDateString('ru-RU');
+  const [orderDay, orderMonth, orderYear] = formattedOrderDate.split('.');
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-md p-4 overflow-y-auto no-print-backdrop">
@@ -26,16 +52,23 @@ const DigitalReceiptModal: React.FC<DigitalReceiptModalProps> = ({ order, onClos
         {/* Actions bar (hidden in print) */}
         <div className="flex justify-between items-center p-4 border-b border-slate-100 print:hidden bg-slate-50 rounded-t-xl">
            <div className="text-slate-500 font-medium text-sm flex items-center">
-              <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
-              Квитанция сформирована
+              <span className="w-2 h-2 rounded-full bg-blue-500 mr-2"></span>
+              Редактирование бланка
            </div>
            <div className="flex gap-2">
+             <button 
+                onClick={handleSave}
+                className="flex items-center space-x-2 bg-emerald-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-emerald-700 transition-colors"
+             >
+                <Save size={18} />
+                <span className="hidden sm:inline">Сохранить</span>
+             </button>
              <button 
                 onClick={handlePrint}
                 className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition-colors"
              >
                 <Printer size={18} />
-                <span>Печать</span>
+                <span className="hidden sm:inline">Печать</span>
              </button>
              <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-lg text-slate-500">
                 <X size={24} />
@@ -61,9 +94,15 @@ const DigitalReceiptModal: React.FC<DigitalReceiptModalProps> = ({ order, onClos
 
             {/* Title */}
             <div className="text-center mb-6 relative">
-              <h2 className="text-xl font-bold tracking-widest text-slate-900 uppercase">
-                Квитанция № <span className="text-red-600 font-black">{order.receiptNumber}</span>
-              </h2>
+              <div className="flex justify-center items-center text-xl font-bold tracking-widest text-slate-900 uppercase">
+                <span>Квитанция № </span>
+                <input 
+                  type="text"
+                  value={receiptNum}
+                  onChange={(e) => setReceiptNum(e.target.value)}
+                  className="w-24 text-red-600 font-black bg-transparent border-none outline-none focus:ring-2 focus:ring-red-100 rounded px-1 text-center print:ring-0"
+                />
+              </div>
               <p className="text-sm font-bold italic mt-1 text-slate-800">
                 Вид услуги: ЦИФРОВЫЕ УСЛУГИ
               </p>
@@ -82,7 +121,6 @@ const DigitalReceiptModal: React.FC<DigitalReceiptModalProps> = ({ order, onClos
                       <span>{item.total} ₽</span>
                    </div>
                 ))}
-                {/* Empty lines to simulate the blank form if few items */}
                 {[...Array(Math.max(0, 4 - order.items.length))].map((_, i) => (
                   <div key={i} className="h-4 border-b border-slate-200 mt-1 opacity-20"></div>
                 ))}
@@ -90,22 +128,43 @@ const DigitalReceiptModal: React.FC<DigitalReceiptModalProps> = ({ order, onClos
 
               {/* Dates */}
               <div className="grid grid-cols-1 gap-4">
-                 <div className="flex items-end gap-2 text-[13px] font-medium">
+                 {/* Дата приемки */}
+                 <div className="flex items-end gap-1 text-[13px] font-medium">
                     <span className="whitespace-nowrap">Дата приемки «</span>
-                    <span className="flex-grow border-b border-slate-400 text-center px-1 font-bold">{day}</span>
+                    <span className="w-8 border-b border-slate-400 text-center font-bold">{orderDay}</span>
                     <span>» «</span>
-                    <span className="flex-grow border-b border-slate-400 text-center px-1 font-bold">{month}</span>
+                    <span className="w-8 border-b border-slate-400 text-center font-bold">{orderMonth}</span>
                     <span>» 20</span>
-                    <span className="w-8 border-b border-slate-400 text-center px-1 font-bold">{year.slice(-2)}</span>
+                    <span className="w-6 border-b border-slate-400 text-center font-bold">{orderYear.slice(-2)}</span>
                     <span> г.</span>
                  </div>
-                 <div className="flex items-end gap-2 text-[13px] font-medium">
+
+                 {/* Дата выдачи - IMPROVED INPUTS */}
+                 <div className="flex items-end gap-1 text-[13px] font-medium">
                     <span className="whitespace-nowrap">Дата выдачи «</span>
-                    <span className="flex-grow border-b border-slate-400 text-center px-1 font-bold">{day}</span>
+                    <input 
+                      type="text" 
+                      maxLength={2}
+                      value={issueDay}
+                      onChange={(e) => setIssueDay(e.target.value.replace(/\D/g, ''))}
+                      className="w-8 border-b border-slate-400 text-center font-bold bg-transparent outline-none focus:bg-blue-50 focus:ring-1 focus:ring-blue-200 print:focus:bg-transparent print:ring-0"
+                    />
                     <span>» «</span>
-                    <span className="flex-grow border-b border-slate-400 text-center px-1 font-bold">{month}</span>
+                    <input 
+                      type="text" 
+                      maxLength={2}
+                      value={issueMonth}
+                      onChange={(e) => setIssueMonth(e.target.value.replace(/\D/g, ''))}
+                      className="w-8 border-b border-slate-400 text-center font-bold bg-transparent outline-none focus:bg-blue-50 focus:ring-1 focus:ring-blue-200 print:focus:bg-transparent print:ring-0"
+                    />
                     <span>» 20</span>
-                    <span className="w-8 border-b border-slate-400 text-center px-1 font-bold">{year.slice(-2)}</span>
+                    <input 
+                      type="text" 
+                      maxLength={2}
+                      value={issueYear}
+                      onChange={(e) => setIssueYear(e.target.value.replace(/\D/g, ''))}
+                      className="w-6 border-b border-slate-400 text-center font-bold bg-transparent outline-none focus:bg-blue-50 focus:ring-1 focus:ring-blue-200 print:focus:bg-transparent print:ring-0"
+                    />
                     <span> г.</span>
                  </div>
               </div>
@@ -138,12 +197,16 @@ const DigitalReceiptModal: React.FC<DigitalReceiptModalProps> = ({ order, onClos
           body * { visibility: hidden; }
           .print\\:hidden { display: none !important; }
           .print\\:p-0 { padding: 0 !important; }
-          .print-container, .print-container * { visibility: visible; }
-          .fixed { position: absolute; left: 0; top: 0; width: 100%; }
+          .fixed { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; height: auto !important; overflow: visible !important; }
           .no-print-backdrop { background: transparent !important; backdrop-filter: none !important; }
           .bg-white { background-color: white !important; }
           .border { border: none !important; }
           .p-8, .p-12 { padding: 0 !important; }
+          input { border: none !important; box-shadow: none !important; -webkit-appearance: none; appearance: none; background: transparent !important; }
+          .print\\:shadow-none { box-shadow: none !important; }
+          .no-print-backdrop { background: white !important; }
+          .bg-white.w-full { width: auto !important; }
+          .p-8.sm\\:p-12 { padding: 0 !important; }
         }
       `}</style>
     </div>
