@@ -18,7 +18,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
 
-  // Viewport scale factor (to show larger preview than real pixels)
   const VIEWPORT_SCALE = 8; 
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,9 +60,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
         const targetFaceMm = (specs.faceHeightMin + specs.faceHeightMax) / 2;
         const targetTopMm = (specs.topMarginMin + specs.topMarginMax) / 2;
         
-        // The logic: 1 normalized unit of height = ImageHeight
-        // spec.heightMm = total canvas height
-        // totalHeightNeeded (in norm units) = headHeightNorm * (TotalHeightMm / TargetFaceMm)
         const totalHeightNorm = headHeightNorm * (specs.heightMm / targetFaceMm);
         const topMarginNorm = totalHeightNorm * (targetTopMm / specs.heightMm);
         
@@ -99,14 +95,12 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Filter for Military ID
     if (selectedVariant.isGrayscale) {
       ctx.filter = 'grayscale(100%) contrast(1.1)';
     } else {
       ctx.filter = 'none';
     }
 
-    // Source coordinates
     const sHeight = img.height / crop.scale;
     const sWidth = sHeight * aspectRatio;
     const sx = (img.width * (crop.x / 100)) - (sWidth / 2);
@@ -114,37 +108,41 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
 
     ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, canvas.width, canvas.height);
 
-    // Reset filter for overlays
     ctx.filter = 'none';
 
-    // GUIDELINES (visual only)
+    // GUIDELINES
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 5]);
     
-    // Top Margin Guide
     const tmRatio = (selectedVariant.topMarginMin + selectedVariant.topMarginMax) / 2 / selectedVariant.heightMm;
     ctx.beginPath();
     ctx.moveTo(0, canvas.height * tmRatio);
     ctx.lineTo(canvas.width, canvas.height * tmRatio);
     ctx.stroke();
 
-    // Bottom Face Guide
     const headRatio = (selectedVariant.faceHeightMin + selectedVariant.faceHeightMax) / 2 / selectedVariant.heightMm;
     ctx.beginPath();
     ctx.moveTo(0, canvas.height * (tmRatio + headRatio));
     ctx.lineTo(canvas.width, canvas.height * (tmRatio + headRatio));
     ctx.stroke();
 
-    // Corner Overlay for Tractor Rights
-    if (selectedVariant.hasCorner) {
+    // Corner Overlay
+    if (selectedVariant.cornerSide) {
       ctx.setLineDash([]);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      const cornerSize = canvas.width * 0.25;
+      
       ctx.beginPath();
-      // Example Left Corner (as requested for Minuninsk)
-      ctx.moveTo(0, canvas.height - 40);
-      ctx.quadraticCurveTo(40, canvas.height - 40, 40, canvas.height);
-      ctx.lineTo(0, canvas.height);
+      if (selectedVariant.cornerSide === 'left') {
+        ctx.moveTo(0, canvas.height - cornerSize);
+        ctx.quadraticCurveTo(cornerSize, canvas.height - cornerSize, cornerSize, canvas.height);
+        ctx.lineTo(0, canvas.height);
+      } else {
+        ctx.moveTo(canvas.width, canvas.height - cornerSize);
+        ctx.quadraticCurveTo(canvas.width - cornerSize, canvas.height - cornerSize, canvas.width - cornerSize, canvas.height);
+        ctx.lineTo(canvas.width, canvas.height);
+      }
       ctx.closePath();
       ctx.fill();
       
@@ -186,7 +184,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.95 : 1.05;
-    setCrop(prev => ({ ...prev, scale: Math.max(0.2, Math.min(20, prev.scale * delta)) }));
+    setCrop(prev => ({ ...prev, scale: Math.max(0.1, Math.min(30, prev.scale * delta)) }));
   };
 
   const savePhoto = () => {
@@ -243,15 +241,14 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
             </label>
           )}
 
-          {/* Guidelines info badge */}
           {image && !isProcessing && (
             <div className="absolute top-6 left-6 bg-black/60 backdrop-blur text-white px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center space-x-2">
                <span className="w-2 h-2 rounded-full bg-green-400 animate-ping"></span>
-               <span>Направляющие по ГОСТу включены</span>
+               <span>Направляющие ГОСТ включены</span>
             </div>
           )}
 
-          {/* Controls Overlay */}
+          {/* Controls */}
           <div className="absolute bottom-10 left-1/2 -translate-x-1/2 flex items-center space-x-4 bg-white/90 backdrop-blur-md shadow-2xl rounded-2xl px-6 py-3 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-y-4 group-hover:translate-y-0">
             <div className="flex items-center space-x-1">
                <button onClick={() => setCrop(p => ({ ...p, scale: p.scale * 0.9 }))} className="p-2 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"><Maximize size={16} /></button>
@@ -267,7 +264,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
         </div>
 
         {/* Sidebar */}
-        <div className="flex-[1.2] p-8 flex flex-col border-l border-slate-100 bg-white">
+        <div className="flex-[1.2] p-8 flex flex-col border-l border-slate-100 bg-white overflow-y-auto">
           <div className="flex justify-between items-start mb-8">
             <div>
               <h2 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center">
@@ -284,7 +281,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
           </div>
 
           <div className="space-y-6 flex-grow">
-            {/* Type Selector */}
             <div className="space-y-2">
                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Тип документа</label>
                <div className="relative">
@@ -307,7 +303,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
                </div>
             </div>
 
-            {/* Spec Details */}
             <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4">
                <div className="flex items-center text-blue-600 mb-2">
                  <Info size={16} className="mr-2" />
@@ -321,15 +316,15 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
                   </div>
                   <div>
                     <p className="text-[9px] text-slate-400 font-bold uppercase">Лицо</p>
-                    <p className="text-xs font-bold text-slate-700">{selectedVariant.faceHeightMin}-{selectedVariant.faceHeightMax} мм</p>
+                    <p className="text-xs font-bold text-slate-700">{selectedVariant.faceHeightMin === selectedVariant.faceHeightMax ? selectedVariant.faceHeightMin : `${selectedVariant.faceHeightMin}-${selectedVariant.faceHeightMax}`} мм</p>
                   </div>
                   <div>
-                    <p className="text-[9px] text-slate-400 font-bold uppercase">Поле сверху</p>
-                    <p className="text-xs font-bold text-slate-700">{selectedVariant.topMarginMin}-{selectedVariant.topMarginMax} мм</p>
+                    <p className="text-[9px] text-slate-400 font-bold uppercase">Отступ сверху</p>
+                    <p className="text-xs font-bold text-slate-700">{selectedVariant.topMarginMin === selectedVariant.topMarginMax ? selectedVariant.topMarginMin : `${selectedVariant.topMarginMin}-${selectedVariant.topMarginMax}`} мм</p>
                   </div>
                   <div>
                     <p className="text-[9px] text-slate-400 font-bold uppercase">Стиль</p>
-                    <p className="text-xs font-bold text-slate-700">{selectedVariant.isGrayscale ? 'Ч/Б' : 'Цветное'}</p>
+                    <p className="text-xs font-bold text-slate-700">{selectedVariant.isGrayscale ? 'Черно-белое' : 'Цветное'}</p>
                   </div>
                </div>
 
@@ -341,7 +336,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
             <div className="space-y-3">
                <label className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-2xl border-2 border-slate-100 text-slate-600 font-black text-xs hover:bg-slate-50 transition-all cursor-pointer uppercase tracking-tighter">
                   <Upload size={16} />
-                  <span>Выбрать другое фото</span>
+                  <span>Другое фото</span>
                   <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
                </label>
                {image && (
@@ -350,7 +345,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
                    className="w-full flex items-center justify-center space-x-2 py-3 rounded-2xl bg-blue-50 text-blue-600 font-black text-xs hover:bg-blue-100 transition-all uppercase tracking-tighter"
                  >
                     <Loader2 className={isProcessing ? "animate-spin" : ""} size={16} />
-                    <span>Авто-подгонка (AI)</span>
+                    <span>AI-Перерасчет</span>
                  </button>
                )}
             </div>
@@ -360,10 +355,10 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose }) => {
             <button 
               onClick={savePhoto}
               disabled={!image || isProcessing}
-              className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black shadow-[0_20px_40px_-10px_rgba(37,99,235,0.4)] hover:bg-blue-700 hover:shadow-none disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center space-x-3"
+              className="w-full py-5 bg-blue-600 text-white rounded-3xl font-black shadow-xl hover:bg-blue-700 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center space-x-3"
             >
               <Check size={24} />
-              <span className="text-lg tracking-tighter uppercase">СОХРАНИТЬ В JPG</span>
+              <span className="text-lg tracking-tighter uppercase">СКАЧАТЬ ФАЙЛ</span>
             </button>
           </div>
         </div>

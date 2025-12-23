@@ -18,7 +18,7 @@ export interface PhotoSpecs extends ServiceVariant {
   topMarginMin: number;
   topMarginMax: number;
   isGrayscale?: boolean;
-  hasCorner?: boolean;
+  cornerSide?: 'left' | 'right';
 }
 
 export const DIGITAL_CATEGORY_IDS = ['docs', 'processing', 'scanning', 'transfer_files', 'transfer_data', 'video'];
@@ -36,21 +36,33 @@ export const PHOTO_VARIANTS: PhotoSpecs[] = [
     topMarginMax: 4
   },
   { 
-    id: '3x4_corner_left', 
-    label: '3 × 4 см (Левый уголок)', 
-    description: 'Тракторные права (Минусинск)',
+    id: '3x4_left', 
+    label: '3 × 4 см (Минусинск)', 
+    description: 'Левый уголок (Тракторные права)',
     widthMm: 30,
     heightMm: 40,
     faceHeightMin: 21,
     faceHeightMax: 26,
     topMarginMin: 2,
     topMarginMax: 4,
-    hasCorner: true
+    cornerSide: 'left'
   },
   { 
-    id: '3.5x4.5', 
-    label: '3,5 × 4,5 см (Паспорт РФ)', 
-    description: 'Паспорт РФ, Водительские права',
+    id: '3x4_right', 
+    label: '3 × 4 см (Абакан)', 
+    description: 'Правый уголок (Тракторные права)',
+    widthMm: 30,
+    heightMm: 40,
+    faceHeightMin: 21,
+    faceHeightMax: 26,
+    topMarginMin: 2,
+    topMarginMax: 4,
+    cornerSide: 'right'
+  },
+  { 
+    id: '3.5x4.5_rf', 
+    label: '35 × 45 мм (Паспорт РФ / Новый загран)', 
+    description: 'Шенген, Карта водителя, Тахограф',
     widthMm: 35,
     heightMm: 45,
     faceHeightMin: 32.7,
@@ -59,7 +71,18 @@ export const PHOTO_VARIANTS: PhotoSpecs[] = [
     topMarginMax: 5
   },
   { 
-    id: '2.5x3.5', 
+    id: '3.5x4.5_old', 
+    label: '35 × 45 мм (Загран 5 лет)', 
+    description: 'Старый образец загранпаспорта',
+    widthMm: 35,
+    heightMm: 45,
+    faceHeightMin: 28,
+    faceHeightMax: 28,
+    topMarginMin: 2,
+    topMarginMax: 2
+  },
+  { 
+    id: '2.5x3.5_mil', 
     label: '2,5 × 3,5 см (Военный)', 
     description: 'Военный билет (Ч/Б)',
     widthMm: 25,
@@ -72,8 +95,8 @@ export const PHOTO_VARIANTS: PhotoSpecs[] = [
   },
   { 
     id: '4x6', 
-    label: '4 × 6 см', 
-    description: 'Личное дело, Охранник',
+    label: '4 × 6 см (Личное дело)', 
+    description: 'Лицензия охранника',
     widthMm: 40,
     heightMm: 60,
     faceHeightMin: 22,
@@ -83,14 +106,14 @@ export const PHOTO_VARIANTS: PhotoSpecs[] = [
   },
   { 
     id: '9x12', 
-    label: '9 × 12 см', 
-    description: 'Личное дело',
+    label: '9 × 12 см (Личное дело)', 
+    description: 'Для личного дела в ведомствах',
     widthMm: 90,
     heightMm: 120,
     faceHeightMin: 50,
     faceHeightMax: 55,
     topMarginMin: 10,
-    topMarginMax: 12
+    topMarginMax: 10
   }
 ];
 
