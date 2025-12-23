@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ServiceItem, PaymentMethod, ServiceVariant } from '../types';
 import { PHOTO_VARIANTS } from '../constants';
-import { X, Receipt as ReceiptIcon, Trash2, CreditCard, Banknote } from 'lucide-react';
+import { X, Receipt as ReceiptIcon, Trash2, CreditCard, Banknote, Calculator } from 'lucide-react';
 
 interface ReceiptProps {
   items: ServiceItem[];
@@ -14,6 +14,7 @@ interface ReceiptProps {
 
 const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onClose, onClear, onSaveOrder }) => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [receivedAmount, setReceivedAmount] = useState<string>('');
 
   const getVariantInfo = (variantId: string): ServiceVariant | undefined => {
     return PHOTO_VARIANTS.find(v => v.id === variantId);
@@ -54,6 +55,12 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onCl
   }, [items, quantities, customPrices]);
 
   const total = cartItems.reduce((acc, item) => acc + item.subtotal, 0);
+  
+  const changeAmount = useMemo(() => {
+    const received = parseFloat(receivedAmount);
+    if (isNaN(received) || received < total) return 0;
+    return received - total;
+  }, [receivedAmount, total]);
 
   const handlePay = () => {
     onSaveOrder(paymentMethod);
@@ -96,7 +103,6 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onCl
                     )}
                     <span className="text-slate-500 text-xs block mt-0.5">
                       {entry.quantity} {entry.originalItem.unit} x {entry.price} ₽
-                      {entry.originalItem.isVariablePrice && !entry.originalItem.isPriceEditable && ' (от)'}
                     </span>
                   </div>
                   <div className="font-bold text-slate-800 whitespace-nowrap">
@@ -109,60 +115,95 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onCl
         </div>
 
         {cartItems.length > 0 && (
-            <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-100">
-                <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Способ оплаты</p>
-                <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
-                    <button 
-                        onClick={() => setPaymentMethod('cash')}
-                        className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-sm font-medium transition-all ${
-                            paymentMethod === 'cash' 
-                            ? 'bg-emerald-100 text-emerald-700 shadow-sm' 
-                            : 'text-slate-500 hover:bg-slate-50'
-                        }`}
-                    >
-                        <Banknote size={16} />
-                        <span>Наличные</span>
-                    </button>
-                    <button 
-                        onClick={() => setPaymentMethod('card')}
-                        className={`flex-1 flex items-center justify-center space-x-2 py-2 rounded-lg text-sm font-medium transition-all ${
-                            paymentMethod === 'card' 
-                            ? 'bg-purple-100 text-purple-700 shadow-sm' 
-                            : 'text-slate-500 hover:bg-slate-50'
-                        }`}
-                    >
-                        <CreditCard size={16} />
-                        <span>Картой</span>
-                    </button>
+            <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 space-y-4">
+                <div>
+                  <p className="text-[10px] text-slate-400 mb-2 font-black uppercase tracking-widest">Способ оплаты</p>
+                  <div className="flex bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
+                      <button 
+                          onClick={() => setPaymentMethod('cash')}
+                          className={`flex-1 flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                              paymentMethod === 'cash' 
+                              ? 'bg-emerald-600 text-white shadow-md' 
+                              : 'text-slate-500 hover:bg-slate-50'
+                          }`}
+                      >
+                          <Banknote size={16} />
+                          <span>Наличные</span>
+                      </button>
+                      <button 
+                          onClick={() => setPaymentMethod('card')}
+                          className={`flex-1 flex items-center justify-center space-x-2 py-2.5 rounded-lg text-sm font-bold transition-all ${
+                              paymentMethod === 'card' 
+                              ? 'bg-purple-600 text-white shadow-md' 
+                              : 'text-slate-500 hover:bg-slate-50'
+                          }`}
+                      >
+                          <CreditCard size={16} />
+                          <span>Картой</span>
+                      </button>
+                  </div>
                 </div>
+
+                {paymentMethod === 'cash' && (
+                  <div className="animate-in slide-in-from-bottom-2 duration-200">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest flex items-center">
+                          <Calculator size={10} className="mr-1" /> Получено
+                        </label>
+                        <div className="relative">
+                          <input 
+                            type="number"
+                            value={receivedAmount}
+                            onChange={(e) => setReceivedAmount(e.target.value)}
+                            onFocus={(e) => e.target.select()}
+                            placeholder="0"
+                            className="w-full bg-white border-2 border-emerald-100 rounded-xl px-4 py-3 text-lg font-bold text-slate-800 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all"
+                          />
+                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 font-bold">₽</span>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Сдача</label>
+                        <div className={`w-full h-[52px] flex items-center px-4 rounded-xl border-2 font-black text-xl transition-all ${
+                          changeAmount > 0 
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-600 shadow-inner' 
+                          : 'bg-slate-100 border-slate-200 text-slate-300'
+                        }`}>
+                          {changeAmount} ₽
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
             </div>
         )}
 
-        <div className="p-5 bg-slate-50 border-t border-slate-200 rounded-b-2xl">
+        <div className="p-5 bg-white border-t border-slate-200 rounded-b-2xl">
           <div className="flex justify-between items-center mb-6">
-            <span className="text-slate-600 font-medium">Общая сумма:</span>
-            <span className="text-3xl font-bold text-blue-600">{total} ₽</span>
+            <span className="text-slate-500 font-bold uppercase text-xs tracking-widest">Итого к оплате:</span>
+            <span className="text-4xl font-black text-blue-600 tracking-tighter">{total} ₽</span>
           </div>
           
           <div className="flex gap-3">
              <button 
               onClick={onClear}
               disabled={cartItems.length === 0}
-              className="flex-1 py-3 px-4 rounded-xl border border-red-200 text-red-600 font-semibold hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex justify-center items-center gap-2"
+              className="p-4 rounded-2xl border-2 border-slate-100 text-slate-400 hover:text-red-500 hover:border-red-100 hover:bg-red-50 disabled:opacity-50 transition-all"
+              title="Очистить корзину"
             >
-              <Trash2 size={18} />
-              <span className="hidden sm:inline">Сброс</span>
+              <Trash2 size={24} />
             </button>
             <button 
               onClick={handlePay}
-              disabled={cartItems.length === 0}
-              className={`flex-[2] text-white py-3 px-6 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2
+              disabled={cartItems.length === 0 || (paymentMethod === 'cash' && receivedAmount !== '' && parseFloat(receivedAmount) < total)}
+              className={`flex-grow text-white py-4 px-6 rounded-2xl font-black shadow-xl transition-all flex items-center justify-center gap-3 uppercase tracking-tighter text-lg
                  ${paymentMethod === 'cash' 
                     ? 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700' 
                     : 'bg-purple-600 shadow-purple-200 hover:bg-purple-700'
                  } disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed`}
             >
-              {paymentMethod === 'cash' ? 'Оплата наличными' : 'Оплата картой'}
+              {paymentMethod === 'cash' ? 'Принять наличные' : 'Оплачено картой'}
             </button>
           </div>
         </div>
