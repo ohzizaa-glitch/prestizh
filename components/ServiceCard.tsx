@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ServiceCategory, ServiceItem } from '../types';
+import { ServiceCategory, ServiceItem, ServiceVariant } from '../types';
 import { PHOTO_VARIANTS } from '../constants';
 import Counter from './Counter';
 import { ChevronDown, Pencil } from 'lucide-react';
@@ -42,10 +42,14 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
       
       <div className="p-4 flex-grow flex flex-col space-y-6">
         {category.items.map((item) => {
+          const variantsList = item.variants || PHOTO_VARIANTS;
           const currentVariantId = item.hasVariants 
-            ? (selectedVariants[item.id] || PHOTO_VARIANTS[0].id)
+            ? (selectedVariants[item.id] || variantsList[0].id)
             : '';
           
+          const selectedVariant = variantsList.find(v => v.id === currentVariantId);
+          const displayPrice = selectedVariant?.price !== undefined ? selectedVariant.price : item.price;
+
           const quantityKey = item.hasVariants 
             ? getVariantKey(item.id, currentVariantId)
             : item.id;
@@ -80,7 +84,7 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
                     ) : (
                       <div className="text-sm font-medium text-slate-500">
                         {item.isVariablePrice && 'от '}
-                        <span className={isDarkMode ? 'text-slate-300' : 'text-slate-800'}>{item.price} ₽</span> {item.unit && `/ ${item.unit}`}
+                        <span className={isDarkMode ? 'text-slate-300' : 'text-slate-800'}>{displayPrice} ₽</span> {item.unit && `/ ${item.unit}`}
                       </div>
                     )}
                   </div>
@@ -94,9 +98,9 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
                         onChange={(e) => handleVariantChange(item.id, e.target.value)}
                         className={`w-full sm:w-48 appearance-none border text-xs py-2.5 pl-3 pr-8 rounded-xl font-bold leading-tight focus:outline-none transition-colors ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 focus:border-blue-500' : 'bg-slate-50 border-slate-200 text-slate-700 focus:bg-white focus:border-blue-500'}`}
                       >
-                        {PHOTO_VARIANTS.map(v => (
+                        {variantsList.map(v => (
                           <option key={v.id} value={v.id}>
-                            {v.label}
+                            {v.label} {v.price ? `(${v.price} ₽)` : ''}
                           </option>
                         ))}
                       </select>

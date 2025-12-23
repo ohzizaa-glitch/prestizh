@@ -18,8 +18,23 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onCl
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [receivedAmount, setReceivedAmount] = useState<string>('');
 
-  const getVariantInfo = (variantId: string): ServiceVariant | undefined => {
-    return PHOTO_VARIANTS.find(v => v.id === variantId);
+  const getActualPrice = (item: ServiceItem, qty: number, variantId?: string) => {
+    // Скидки на печать
+    if (item.id === 'print_10x15' && qty >= 100) return 19;
+    if (item.id === 'print_15x20' && qty >= 50) return 35;
+    if (item.id === 'print_20x30' && qty >= 30) return 75;
+
+    // Цена варианта
+    if (variantId) {
+       const variantsList = item.variants || PHOTO_VARIANTS;
+       const v = variantsList.find(v => v.id === variantId);
+       if (v?.price !== undefined) return v.price;
+    }
+
+    // Ручная цена
+    if (item.isPriceEditable && customPrices[item.id]) return customPrices[item.id];
+
+    return item.price;
   };
 
   const cartItems = useMemo(() => {
@@ -40,8 +55,10 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onCl
       const item = items.find(i => i.id === itemId);
 
       if (item) {
-        const variant = variantId ? getVariantInfo(variantId) : undefined;
-        const actualPrice = item.isPriceEditable ? (customPrices[itemId] || 0) : item.price;
+        const variantsList = item.variants || PHOTO_VARIANTS;
+        const variant = variantId ? variantsList.find(v => v.id === variantId) : undefined;
+        const actualPrice = getActualPrice(item, qty, variantId);
+        
         results.push({
             originalItem: item,
             variant,

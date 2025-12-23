@@ -1,9 +1,11 @@
+
 import { LucideIcon } from 'lucide-react';
 
 export interface ServiceVariant {
   id: string;
   label: string;
   description?: string;
+  price?: number; // Индивидуальная цена для варианта
 }
 
 export interface ServiceItem {
@@ -12,8 +14,9 @@ export interface ServiceItem {
   price: number;
   unit?: string;
   isVariablePrice?: boolean;
-  hasVariants?: boolean; // Flag to enable variant selector
-  isPriceEditable?: boolean; // Flag to allow manual price entry
+  hasVariants?: boolean; // Флаг включения селектора
+  variants?: ServiceVariant[]; // Список специфичных вариантов для товара
+  isPriceEditable?: boolean; // Флаг ручного ввода цены
 }
 
 export interface ServiceCategory {
@@ -34,8 +37,8 @@ export type PaymentMethod = 'cash' | 'card';
 export interface Order {
   id: string;
   receiptNumber?: string;
-  date: string; // ISO string (Order date)
-  issueDate?: string; // ISO string (Delivery date)
+  date: string; // ISO string
+  issueDate?: string; // ISO string
   timestamp: number;
   items: {
     name: string;
@@ -43,7 +46,7 @@ export interface Order {
     price: number;
     quantity: number;
     total: number;
-    categoryId?: string; // To distinguish digital services later
+    categoryId?: string;
   }[];
   totalAmount: number;
   paymentMethod: PaymentMethod;

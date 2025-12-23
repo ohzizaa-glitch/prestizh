@@ -11,7 +11,7 @@ import PhotoCutter from './components/PhotoCutter';
 import CloudInbox from './components/CloudInbox';
 import Toast from './components/Toast';
 import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload } from 'lucide-react';
-import { PaymentMethod, Order } from './types';
+import { PaymentMethod, Order, ServiceItem } from './types';
 
 export default function App() {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -56,6 +56,32 @@ export default function App() {
     if (isDarkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
+
+  const allItems = useMemo(() => {
+    const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items.map(i => ({ ...i, categoryId: cat.id })));
+    const printingItems = PRINTING_CATEGORY.items.map(i => ({ ...i, categoryId: PRINTING_CATEGORY.id }));
+    return [...standardItems, ...printingItems];
+  }, []);
+
+  // Вспомогательная функция расчета актуальной цены для товара
+  const getActualPrice = (item: ServiceItem, qty: number, variantId?: string) => {
+    // Скидки на печать
+    if (item.id === 'print_10x15' && qty >= 100) return 19;
+    if (item.id === 'print_15x20' && qty >= 50) return 35;
+    if (item.id === 'print_20x30' && qty >= 30) return 75;
+
+    // Цена варианта
+    if (variantId) {
+       const variantsList = item.variants || PHOTO_VARIANTS;
+       const v = variantsList.find(v => v.id === variantId);
+       if (v?.price !== undefined) return v.price;
+    }
+
+    // Ручная цена
+    if (item.isPriceEditable && customPrices[item.id]) return customPrices[item.id];
+
+    return item.price;
+  };
 
   const handleQuantityChange = (id: string, qty: number) => {
     setQuantities(prev => {
@@ -106,12 +132,6 @@ export default function App() {
     showToast('Квитанция обновлена');
   };
 
-  const allItems = useMemo(() => {
-    const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items.map(i => ({ ...i, categoryId: cat.id })));
-    const printingItems = PRINTING_CATEGORY.items.map(i => ({ ...i, categoryId: PRINTING_CATEGORY.id }));
-    return [...standardItems, ...printingItems];
-  }, []);
-
   const filteredCategories = useMemo(() => {
     if (!searchQuery.trim()) return SERVICE_CATEGORIES;
     const query = searchQuery.toLowerCase();
@@ -124,9 +144,10 @@ export default function App() {
   const totalPrice = useMemo(() => {
     return Object.entries(quantities).reduce((total, [key, value]) => {
       const qty = value as number;
-      const [itemId] = key.split('__');
+      const [itemId, variantId] = key.split('__');
       const item = allItems.find(i => i.id === itemId);
-      const price = (item?.isPriceEditable ? (customPrices[itemId] || 0) : (item?.price || 0));
+      if (!item) return total;
+      const price = getActualPrice(item, qty, variantId);
       return total + (qty * price);
     }, 0);
   }, [allItems, quantities, customPrices]);
@@ -144,8 +165,9 @@ export default function App() {
        const [itemId, variantId] = key.split('__');
        const item = allItems.find(i => i.id === itemId);
        if(item) {
-          const variant = variantId ? PHOTO_VARIANTS.find(v => v.id === variantId) : undefined;
-          const price = item.isPriceEditable ? (customPrices[itemId] || 0) : item.price;
+          const variantsList = item.variants || PHOTO_VARIANTS;
+          const variant = variantId ? variantsList.find(v => v.id === variantId) : undefined;
+          const price = getActualPrice(item, qty, variantId);
           const itemData = {
              name: item.name,
              variant: variant?.label,
@@ -359,6 +381,7 @@ export default function App() {
         <PhotoCutter 
           onClose={() => setIsCutterOpen(false)} 
           isDarkMode={isDarkMode}
+          onNotify={showToast}
         />
       )}
       {isInboxOpen && (

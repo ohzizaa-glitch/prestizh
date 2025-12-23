@@ -1,3 +1,4 @@
+
 import { 
   Camera, 
   Scissors, 
@@ -151,6 +152,17 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     title: 'Товары',
     icon: Package,
     items: [
+      { 
+        id: 'goods_flash', 
+        name: 'Флешки', 
+        price: 700, 
+        unit: 'шт', 
+        hasVariants: true,
+        variants: [
+          { id: '32gb', label: '32 ГБ', price: 700 },
+          { id: '64gb', label: '64 ГБ', price: 800 }
+        ]
+      },
       { id: 'goods_frames', name: 'Рамки', price: 0, unit: 'шт', isPriceEditable: true },
       { id: 'goods_albums', name: 'Фотоальбомы', price: 0, unit: 'шт', isPriceEditable: true },
       { id: 'goods_batteries', name: 'Батарейки', price: 0, unit: 'шт', isPriceEditable: true },
