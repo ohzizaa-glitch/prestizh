@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { X, Upload, Check } from 'lucide-react';
+import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
 
 interface PhotoCutterProps {
@@ -44,9 +44,18 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
       reader.onload = (event) => {
         setImage(event.target?.result as string);
         setIsImgLoaded(false);
+        setCrop({ x: 50, y: 50, scale: 1 });
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const move = (dx: number, dy: number) => {
+    setCrop(prev => ({
+      ...prev,
+      x: Math.min(100, Math.max(0, prev.x + dx)),
+      y: Math.min(100, Math.max(0, prev.y + dy))
+    }));
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -59,11 +68,9 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
     
-    setCrop(prev => ({
-      ...prev,
-      x: Math.min(100, Math.max(0, prev.x - (dx / 5))), 
-      y: Math.min(100, Math.max(0, prev.y - (dy / 5)))
-    }));
+    // Чувствительность перемещения мышью
+    const sensitivity = 0.15;
+    move(-dx * sensitivity, -dy * sensitivity);
     setDragStart({ x: e.clientX, y: e.clientY });
   };
 
@@ -84,6 +91,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
+    // Очистка и фон
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetWidth, targetHeight);
 
@@ -98,6 +106,41 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
     ctx.filter = 'none';
 
+    // РИСОВАНИЕ ЛИНИЙ (Биометрия) - Возвращаем как было
+    const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
+      const yPx = yMm * VIEWPORT_SCALE;
+      ctx.beginPath();
+      if (isDashed) ctx.setLineDash([4, 4]);
+      else ctx.setLineDash([]);
+      
+      ctx.moveTo(0, yPx);
+      ctx.lineTo(targetWidth, yPx);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    if (specs.faceHeightMin > 0) {
+      // Верхняя граница (макушка) - Красные линии
+      drawLine(specs.topMarginMin, 'rgba(255, 0, 0, 0.6)'); 
+      drawLine(specs.topMarginMax, 'rgba(255, 0, 0, 0.3)', true);
+      
+      // Нижняя граница (подбородок) - Синие линии
+      drawLine(specs.topMarginMin + specs.faceHeightMin, 'rgba(0, 0, 255, 0.6)');
+      drawLine(specs.topMarginMax + specs.faceHeightMax, 'rgba(0, 0, 255, 0.3)', true);
+
+      // Центральная вертикальная линия
+      ctx.beginPath();
+      ctx.setLineDash([2, 2]);
+      ctx.moveTo(targetWidth / 2, 0);
+      ctx.lineTo(targetWidth / 2, targetHeight);
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Уголок (если есть)
     if (specs.cornerSide) {
       const cornerSize = targetWidth * 0.28;
       ctx.fillStyle = '#FFFFFF';
@@ -132,6 +175,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div className={`w-full max-w-5xl rounded-3xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[90vh] ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}`}>
         
+        {/* Рабочая область с канвасом */}
         <div className="flex-grow p-6 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-950/50 relative overflow-hidden">
           <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors z-10">
             <X size={24} />
@@ -146,51 +190,69 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
               <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
             </label>
           ) : (
-            <div 
-              className="relative shadow-2xl border-4 border-white cursor-move overflow-hidden"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-            >
-              <canvas ref={canvasRef} />
-              <img 
-                ref={imgRef}
-                src={image} 
-                className="hidden" 
-                onLoad={() => {
-                  setIsImgLoaded(true);
-                }} 
-              />
-            </div>
-          )}
+            <div className="flex flex-col items-center gap-6">
+              <div 
+                className="relative shadow-2xl border-4 border-white cursor-move overflow-hidden bg-white"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+              >
+                <canvas ref={canvasRef} />
+                <img 
+                  ref={imgRef}
+                  src={image} 
+                  className="hidden" 
+                  onLoad={() => setIsImgLoaded(true)} 
+                />
+              </div>
 
-          {image && (
-            <div className="mt-6 flex items-center space-x-4 bg-white/10 backdrop-blur-md p-2 rounded-2xl border border-white/10">
-              <button 
-                onClick={() => setCrop(prev => ({ ...prev, scale: Math.max(0.1, prev.scale - 0.1) }))}
-                className="p-2 hover:bg-white/10 rounded-xl transition-colors font-bold w-10 text-xl"
-              >-</button>
-              <input 
-                type="range" 
-                min="0.1" 
-                max="3" 
-                step="0.01" 
-                value={crop.scale} 
-                onChange={(e) => setCrop(prev => ({ ...prev, scale: parseFloat(e.target.value) }))}
-                className="w-32 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer dark:bg-slate-700"
-              />
-              <button 
-                onClick={() => setCrop(prev => ({ ...prev, scale: prev.scale + 0.1 }))}
-                className="p-2 hover:bg-white/10 rounded-xl transition-colors font-bold w-10 text-xl"
-              >+</button>
+              {/* ТОЧНАЯ РЕГУЛИРОВКА - Всегда видна под фото */}
+              <div className="flex flex-wrap justify-center gap-4 w-full max-w-md">
+                <div className={`p-2 rounded-2xl flex items-center gap-2 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                   <button onClick={() => move(0, -0.5)} className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><ChevronUp size={20} /></button>
+                   <button onClick={() => move(0, 0.5)} className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><ChevronDown size={20} /></button>
+                   <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                   <button onClick={() => move(-0.5, 0)} className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><ChevronLeft size={20} /></button>
+                   <button onClick={() => move(0.5, 0)} className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><ChevronRight size={20} /></button>
+                </div>
+
+                <div className={`p-2 rounded-2xl flex items-center gap-3 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                  <button 
+                    onClick={() => setCrop(prev => ({ ...prev, scale: Math.max(0.1, prev.scale - 0.02) }))}
+                    className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"
+                  ><Minimize2 size={20}/></button>
+                  <input 
+                    type="range" 
+                    min="0.1" 
+                    max="3" 
+                    step="0.001" 
+                    value={crop.scale} 
+                    onChange={(e) => setCrop(prev => ({ ...prev, scale: parseFloat(e.target.value) }))}
+                    className="w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <button 
+                    onClick={() => setCrop(prev => ({ ...prev, scale: prev.scale + 0.02 }))}
+                    className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"
+                  ><Maximize2 size={20}/></button>
+                </div>
+
+                <button 
+                  onClick={() => setCrop({ x: 50, y: 50, scale: 1 })}
+                  className={`p-3 rounded-2xl border shadow-sm transition-all hover:bg-orange-500 hover:text-white ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
+                  title="Сброс позиции"
+                >
+                  <RotateCcw size={20} />
+                </button>
+              </div>
             </div>
           )}
         </div>
 
+        {/* Панель настроек */}
         <div className={`w-full md:w-80 p-6 flex flex-col border-l ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
           <div className="mb-8 flex-grow">
-            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Выбор формата</h3>
+            <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4">Формат документа</h3>
             <div className="space-y-2 max-h-[50vh] overflow-y-auto no-scrollbar pr-1">
               {PHOTO_VARIANTS.map(v => (
                 <button 
@@ -204,14 +266,20 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
                     : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800'
                   }`}
                 >
-                  <p className="font-bold text-sm">{v.label}</p>
+                  <p className={`font-bold text-sm ${selectedVariant.id === v.id ? 'text-blue-600 dark:text-blue-400' : ''}`}>{v.label}</p>
                   <p className="text-[10px] text-slate-500">{v.widthMm} x {v.heightMm} мм</p>
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="mt-auto pt-6 border-t dark:border-slate-800 border-slate-100">
+          <div className="mt-auto pt-6 border-t dark:border-slate-800 border-slate-100 space-y-3">
+            <button 
+              onClick={() => setImage(null)}
+              className={`w-full py-2 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-colors`}
+            >
+              Сменить фотографию
+            </button>
             <button 
               onClick={downloadResult}
               disabled={!image}
