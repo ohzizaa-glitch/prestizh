@@ -6,7 +6,8 @@ import Receipt from './components/Receipt';
 import HistoryModal from './components/HistoryModal';
 import EarningsModal from './components/EarningsModal';
 import DigitalReceiptModal from './components/DigitalReceiptModal';
-import { ShoppingBag, History, TrendingUp, Settings } from 'lucide-react';
+import PhotoCutter from './components/PhotoCutter';
+import { ShoppingBag, History, TrendingUp, Settings, Crop } from 'lucide-react';
 import { PaymentMethod, Order } from './types';
 
 export default function App() {
@@ -14,14 +15,16 @@ export default function App() {
   const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   
-  // History State
+  // Modals States
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isEarningsOpen, setIsEarningsOpen] = useState(false);
+  const [isCutterOpen, setIsCutterOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
   const [orderHistory, setOrderHistory] = useState<Order[]>([]);
 
   // Settings State
   const [nextReceiptNumber, setNextReceiptNumber] = useState<number>(554);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Digital Receipt State
   const [activeDigitalOrder, setActiveDigitalOrder] = useState<Order | null>(null);
@@ -137,7 +140,7 @@ export default function App() {
        id: Date.now().toString(),
        receiptNumber: hasDigitalItems ? currentReceiptNum : undefined,
        date: new Date().toISOString(),
-       issueDate: new Date().toISOString(), // Same as order by default
+       issueDate: new Date().toISOString(),
        timestamp: Date.now(),
        items: orderItems,
        totalAmount: totalPrice,
@@ -198,6 +201,14 @@ export default function App() {
           </div>
           
           <div className="flex space-x-1">
+            <button 
+               onClick={() => setIsCutterOpen(true)}
+               className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition-colors flex items-center space-x-1 border border-blue-100 mr-2"
+               title="Инструмент обрезки фото"
+            >
+               <Crop size={20} />
+               <span className="hidden sm:inline text-sm font-bold uppercase tracking-tighter">AI-Резак</span>
+            </button>
             <button 
                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
                className={`p-2 rounded-lg transition-colors flex items-center space-x-1 ${isSettingsOpen ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:bg-slate-50'}`}
@@ -340,6 +351,12 @@ export default function App() {
         <EarningsModal 
            orders={orderHistory}
            onClose={() => setIsEarningsOpen(false)}
+        />
+      )}
+
+      {isCutterOpen && (
+        <PhotoCutter 
+          onClose={() => setIsCutterOpen(false)}
         />
       )}
 

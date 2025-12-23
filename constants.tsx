@@ -10,15 +10,88 @@ import {
 } from 'lucide-react';
 import { ServiceCategory, ServiceVariant } from './types';
 
+export interface PhotoSpecs extends ServiceVariant {
+  widthMm: number;
+  heightMm: number;
+  faceHeightMin: number;
+  faceHeightMax: number;
+  topMarginMin: number;
+  topMarginMax: number;
+  isGrayscale?: boolean;
+  hasCorner?: boolean;
+}
+
 export const DIGITAL_CATEGORY_IDS = ['docs', 'processing', 'scanning', 'transfer_files', 'transfer_data', 'video'];
 
-export const PHOTO_VARIANTS: ServiceVariant[] = [
-  { id: '3x4', label: '3 × 4 см', description: 'Медицинская книжка, Пропуск, Разрешение на оружие (РОХа)' },
-  { id: '3.5x4.5', label: '3,5 × 4,5 см', description: 'Паспорт РФ, Визы, Водительские права' },
-  { id: '2.5x3.5', label: '2,5 × 3,5 см', description: 'Военный билет' },
-  { id: '3x4_corner', label: '3 × 4 см (с уголком)', description: 'Тракторные права' },
-  { id: '4x6', label: '4 × 6 см', description: 'Личное дело, Лицензия охранника' },
-  { id: '9x12', label: '9 × 12 см', description: 'Личное дело' },
+export const PHOTO_VARIANTS: PhotoSpecs[] = [
+  { 
+    id: '3x4', 
+    label: '3 × 4 см (Стандарт)', 
+    description: 'Медкнижка, Пропуск, РОХа',
+    widthMm: 30,
+    heightMm: 40,
+    faceHeightMin: 21,
+    faceHeightMax: 26,
+    topMarginMin: 2,
+    topMarginMax: 4
+  },
+  { 
+    id: '3x4_corner_left', 
+    label: '3 × 4 см (Левый уголок)', 
+    description: 'Тракторные права (Минусинск)',
+    widthMm: 30,
+    heightMm: 40,
+    faceHeightMin: 21,
+    faceHeightMax: 26,
+    topMarginMin: 2,
+    topMarginMax: 4,
+    hasCorner: true
+  },
+  { 
+    id: '3.5x4.5', 
+    label: '3,5 × 4,5 см (Паспорт РФ)', 
+    description: 'Паспорт РФ, Водительские права',
+    widthMm: 35,
+    heightMm: 45,
+    faceHeightMin: 32.7,
+    faceHeightMax: 33,
+    topMarginMin: 4.7,
+    topMarginMax: 5
+  },
+  { 
+    id: '2.5x3.5', 
+    label: '2,5 × 3,5 см (Военный)', 
+    description: 'Военный билет (Ч/Б)',
+    widthMm: 25,
+    heightMm: 35,
+    faceHeightMin: 24,
+    faceHeightMax: 26,
+    topMarginMin: 2,
+    topMarginMax: 4,
+    isGrayscale: true
+  },
+  { 
+    id: '4x6', 
+    label: '4 × 6 см', 
+    description: 'Личное дело, Охранник',
+    widthMm: 40,
+    heightMm: 60,
+    faceHeightMin: 22,
+    faceHeightMax: 36,
+    topMarginMin: 8,
+    topMarginMax: 10
+  },
+  { 
+    id: '9x12', 
+    label: '9 × 12 см', 
+    description: 'Личное дело',
+    widthMm: 90,
+    heightMm: 120,
+    faceHeightMin: 50,
+    faceHeightMax: 55,
+    topMarginMin: 10,
+    topMarginMax: 12
+  }
 ];
 
 export const SERVICE_CATEGORIES: ServiceCategory[] = [
