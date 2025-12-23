@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { X, QrCode, Upload, Download, FileText, ImageIcon, Trash2, CheckCircle } from 'lucide-react';
+import { X, QrCode, Upload, Download, FileText, Trash2, CheckCircle } from 'lucide-react';
 
 interface ReceivedFile {
   id: string;
@@ -19,10 +19,8 @@ interface CloudInboxProps {
 
 const CloudInbox: React.FC<CloudInboxProps> = ({ onClose, isDarkMode, onNotify }) => {
   const [files, setFiles] = useState<ReceivedFile[]>([]);
-  const [isQrVisible, setIsQrVisible] = useState(true);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // FIX: Cast to File[] to ensure the compiler recognizes the properties of individual file objects
     const newFiles = Array.from(e.target.files || []) as File[];
     if (newFiles.length === 0) return;
 
@@ -60,7 +58,6 @@ const CloudInbox: React.FC<CloudInboxProps> = ({ onClose, isDarkMode, onNotify }
         <div className={`flex-[1.2] p-8 flex flex-col items-center justify-center text-center ${isDarkMode ? 'bg-slate-900/50' : 'bg-blue-50/50'}`}>
           <div className="mb-6">
             <div className={`p-4 rounded-3xl inline-block mb-4 shadow-xl ${isDarkMode ? 'bg-white' : 'bg-white border-8 border-white'}`}>
-              {/* Fake QR Code */}
               <div className="w-32 h-32 bg-slate-100 flex items-center justify-center relative overflow-hidden group">
                  <QrCode size={100} className="text-slate-800" />
                  <div className="absolute inset-0 bg-blue-600/10 group-hover:bg-transparent transition-colors"></div>

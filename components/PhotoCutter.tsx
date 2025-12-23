@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { X, Upload, Check, Loader2, Settings2, Ruler, ChevronDown, RefreshCw, Layers, Monitor } from 'lucide-react';
+import { X, Upload, Check } from 'lucide-react';
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
 
 interface PhotoCutterProps {
@@ -9,40 +9,33 @@ interface PhotoCutterProps {
   onNotify?: (msg: string, type?: 'success' | 'info') => void;
 }
 
-const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify }) => {
+const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
   const [image, setImage] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [selectedVariant, setSelectedVariant] = useState<PhotoSpecs>(PHOTO_VARIANTS[0]);
   const [crop, setCrop] = useState({ x: 50, y: 50, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
-  const [isCustom, setIsCustom] = useState(false);
-  const [customWidth, setCustomWidth] = useState(30);
-  const [customHeight, setCustomHeight] = useState(40);
+  const [isCustom] = useState(false);
+  const [customWidth] = useState(30);
+  const [customHeight] = useState(40);
   
-  const [isSheetMode, setIsSheetMode] = useState(false);
-
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [isImgLoaded, setIsImgLoaded] = useState(false);
 
   const VIEWPORT_SCALE = 8; 
 
-  const activeSpecs = isCustom ? {
-    ...selectedVariant,
-    id: 'custom',
-    label: 'Свой размер',
-    widthMm: customWidth || 1,
-    heightMm: customHeight || 1,
-    faceHeightMin: 0, faceHeightMax: 0, topMarginMin: 0, topMarginMax: 0
-  } : selectedVariant;
-
-  const estimatedDPI = useMemo(() => {
-    if (!imgRef.current) return 0;
-    const pixelsPerMm = imgRef.current.height / (activeSpecs.heightMm / crop.scale);
-    return Math.round(pixelsPerMm * 25.4);
-  }, [crop.scale, activeSpecs, isImgLoaded]);
+  const activeSpecs = useMemo(() => {
+    return isCustom ? {
+      ...selectedVariant,
+      id: 'custom',
+      label: 'Свой размер',
+      widthMm: customWidth || 1,
+      heightMm: customHeight || 1,
+      faceHeightMin: 0, faceHeightMax: 0, topMarginMin: 0, topMarginMax: 0
+    } : selectedVariant;
+  }, [isCustom, selectedVariant, customWidth, customHeight]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -68,7 +61,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     
     setCrop(prev => ({
       ...prev,
-      x: Math.min(100, Math.max(0, prev.x - (dx / 5))), // Simple inverse for natural feel
+      x: Math.min(100, Math.max(0, prev.x - (dx / 5))), 
       y: Math.min(100, Math.max(0, prev.y - (dy / 5)))
     }));
     setDragStart({ x: e.clientX, y: e.clientY });
@@ -204,7 +197,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
                   key={v.id}
                   onClick={() => {
                     setSelectedVariant(v);
-                    setIsCustom(false);
                   }}
                   className={`w-full p-3 rounded-xl text-left border-2 transition-all ${
                     !isCustom && selectedVariant.id === v.id 
