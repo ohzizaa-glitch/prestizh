@@ -11,6 +11,8 @@ import { PaymentMethod, Order } from './types';
 export default function App() {
   // Store quantities as { [itemId or itemId__variantId]: number }
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  // Store custom prices for editable items: { [itemId]: price }
+  const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   
   // History State
@@ -41,8 +43,13 @@ export default function App() {
     });
   };
 
+  const handlePriceChange = (id: string, price: number) => {
+    setCustomPrices(prev => ({ ...prev, [id]: price }));
+  };
+
   const handleClearCart = () => {
     setQuantities({});
+    setCustomPrices({});
     setIsReceiptOpen(false);
   };
 
@@ -58,15 +65,16 @@ export default function App() {
     return [...standardItems, ...printingItems];
   }, []);
 
-  // Calculate total price accounting for composite keys
+  // Calculate total price accounting for composite keys and custom prices
   const totalPrice = useMemo(() => {
     return Object.entries(quantities).reduce((total, [key, value]) => {
       const qty = value as number;
       const [itemId] = key.split('__');
       const item = allItems.find(i => i.id === itemId);
-      return total + (item ? (qty * item.price) : 0);
+      const price = (item?.isPriceEditable ? (customPrices[itemId] || 0) : (item?.price || 0));
+      return total + (qty * price);
     }, 0);
-  }, [allItems, quantities]);
+  }, [allItems, quantities, customPrices]);
 
   const totalItemsCount = (Object.values(quantities) as number[]).reduce((a, b) => a + b, 0);
 
@@ -79,12 +87,13 @@ export default function App() {
        const item = allItems.find(i => i.id === itemId);
        if(item) {
           const variant = variantId ? PHOTO_VARIANTS.find(v => v.id === variantId) : undefined;
+          const price = item.isPriceEditable ? (customPrices[itemId] || 0) : item.price;
           orderItems.push({
              name: item.name,
              variant: variant?.label,
-             price: item.price,
+             price: price,
              quantity: qty,
-             total: qty * item.price
+             total: qty * price
           });
        }
     });
@@ -104,13 +113,22 @@ export default function App() {
     
     // Clear cart after save
     setQuantities({});
+    setCustomPrices({});
     alert(`Заказ на сумму ${totalPrice} ₽ успешно сохранен!`);
   };
 
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      // Offset for sticky header
+      const headerOffset = 160;
+      const elementPosition = element.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
     }
   };
 
@@ -175,7 +193,7 @@ export default function App() {
       <main className="max-w-6xl mx-auto px-4 py-6">
         
         {/* Printing Section First */}
-        <div id={PRINTING_CATEGORY.id} className="scroll-mt-44">
+        <div id={PRINTING_CATEGORY.id} className="scroll-mt-44 mb-8">
           <PrintingSection 
             category={PRINTING_CATEGORY}
             quantities={quantities}
@@ -190,7 +208,9 @@ export default function App() {
               <ServiceCard 
                 category={category}
                 quantities={quantities}
+                customPrices={customPrices}
                 onQuantityChange={handleQuantityChange}
+                onPriceChange={handlePriceChange}
               />
             </div>
           ))}
@@ -225,6 +245,7 @@ export default function App() {
         <Receipt 
           items={allItems}
           quantities={quantities}
+          customPrices={customPrices}
           onClose={() => setIsReceiptOpen(false)}
           onClear={handleClearCart}
           onSaveOrder={handleSaveOrder}

@@ -2,17 +2,24 @@ import React, { useState } from 'react';
 import { ServiceCategory, ServiceItem } from '../types';
 import { PHOTO_VARIANTS } from '../constants';
 import Counter from './Counter';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Pencil } from 'lucide-react';
 
 interface ServiceCardProps {
   category: ServiceCategory;
   quantities: Record<string, number>;
+  customPrices: Record<string, number>;
   onQuantityChange: (id: string, qty: number) => void;
+  onPriceChange: (id: string, price: number) => void;
 }
 
-const ServiceCard: React.FC<ServiceCardProps> = ({ category, quantities, onQuantityChange }) => {
+const ServiceCard: React.FC<ServiceCardProps> = ({ 
+  category, 
+  quantities, 
+  customPrices, 
+  onQuantityChange, 
+  onPriceChange 
+}) => {
   const Icon = category.icon;
-  // Local state to track which variant is selected in the dropdown for each item
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
 
   const getVariantKey = (itemId: string, variantId: string) => `${itemId}__${variantId}`;
@@ -32,8 +39,6 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ category, quantities, onQuant
       
       <div className="p-4 flex-grow flex flex-col space-y-6">
         {category.items.map((item) => {
-          // If item has variants, use the composite key based on selection
-          // If not, use standard ID.
           const currentVariantId = item.hasVariants 
             ? (selectedVariants[item.id] || PHOTO_VARIANTS[0].id)
             : '';
@@ -43,6 +48,7 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ category, quantities, onQuant
             : item.id;
 
           const currentQty = quantities[quantityKey] || 0;
+          const displayPrice = item.isPriceEditable ? (customPrices[item.id] ?? 0) : item.price;
 
           return (
             <div key={item.id} className="flex flex-col gap-3 group border-b border-slate-50 pb-4 last:border-0 last:pb-0">
@@ -53,13 +59,31 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ category, quantities, onQuant
                       {item.name}
                     </span>
                   </div>
-                  <div className="text-sm text-slate-500">
-                    {item.isVariablePrice && 'от '}
-                    {item.price} ₽ {item.unit && `/ ${item.unit}`}
+                  
+                  <div className="mt-1">
+                    {item.isPriceEditable ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="relative">
+                          <input
+                            type="number"
+                            value={customPrices[item.id] || ''}
+                            onChange={(e) => onPriceChange(item.id, parseInt(e.target.value) || 0)}
+                            placeholder="Цена..."
+                            className="w-24 bg-blue-50 border border-blue-100 text-blue-700 font-bold text-sm px-2 py-1 rounded focus:outline-none focus:ring-2 focus:ring-blue-200 placeholder:text-blue-300 placeholder:font-normal transition-all"
+                          />
+                          <Pencil size={10} className="absolute right-1 top-1 text-blue-300" />
+                        </div>
+                        <span className="text-sm text-slate-400">₽ {item.unit && `/ ${item.unit}`}</span>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-slate-500">
+                        {item.isVariablePrice && 'от '}
+                        {item.price} ₽ {item.unit && `/ ${item.unit}`}
+                      </div>
+                    )}
                   </div>
                 </div>
                 
-                {/* Variant Selector */}
                 {item.hasVariants && (
                   <div className="w-full sm:w-auto mt-2 sm:mt-0">
                     <div className="relative">
@@ -78,7 +102,6 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ category, quantities, onQuant
                         <ChevronDown size={14} />
                       </div>
                     </div>
-                    {/* Variant Description */}
                     <div className="text-[10px] text-slate-400 mt-1 max-w-[200px] leading-tight">
                        {PHOTO_VARIANTS.find(v => v.id === currentVariantId)?.description}
                     </div>

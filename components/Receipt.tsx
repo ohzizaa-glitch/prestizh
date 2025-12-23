@@ -6,25 +6,25 @@ import { X, Receipt as ReceiptIcon, Trash2, CreditCard, Banknote } from 'lucide-
 interface ReceiptProps {
   items: ServiceItem[];
   quantities: Record<string, number>;
+  customPrices: Record<string, number>;
   onClose: () => void;
   onClear: () => void;
   onSaveOrder: (paymentMethod: PaymentMethod) => void;
 }
 
-const Receipt: React.FC<ReceiptProps> = ({ items, quantities, onClose, onClear, onSaveOrder }) => {
+const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onClose, onClear, onSaveOrder }) => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
 
-  // Helper to find variant info
   const getVariantInfo = (variantId: string): ServiceVariant | undefined => {
     return PHOTO_VARIANTS.find(v => v.id === variantId);
   };
 
-  // Process quantities keys to rebuild the cart list
   const cartItems = useMemo(() => {
     const results: Array<{
         originalItem: ServiceItem;
         variant?: ServiceVariant;
         quantity: number;
+        price: number;
         subtotal: number;
         key: string;
     }> = [];
@@ -33,40 +33,37 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, onClose, onClear, 
       const qty = value as number;
       if (qty <= 0) return;
 
-      // Check if key is composite (e.g. "doc_photo__3x4")
       const [itemId, variantId] = key.split('__');
       const item = items.find(i => i.id === itemId);
 
       if (item) {
         const variant = variantId ? getVariantInfo(variantId) : undefined;
+        const actualPrice = item.isPriceEditable ? (customPrices[itemId] || 0) : item.price;
         results.push({
             originalItem: item,
             variant,
             quantity: qty,
-            subtotal: qty * item.price,
+            price: actualPrice,
+            subtotal: qty * actualPrice,
             key
         });
       }
     });
 
     return results;
-  }, [items, quantities]);
+  }, [items, quantities, customPrices]);
 
   const total = cartItems.reduce((acc, item) => acc + item.subtotal, 0);
 
   const handlePay = () => {
     onSaveOrder(paymentMethod);
     onClose();
-    // Assuming onClear handled by parent after save or inside save wrapper, 
-    // but typically we clear after successful payment.
-    // In this flow, we will let parent handle the logic.
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
         
-        {/* Header */}
         <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
           <div className="flex items-center space-x-3">
             <div className="bg-orange-100 p-2 rounded-full text-orange-600">
@@ -79,7 +76,6 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, onClose, onClear, 
           </button>
         </div>
 
-        {/* List */}
         <div className="overflow-y-auto p-5 space-y-4 flex-grow">
           {cartItems.length === 0 ? (
             <div className="text-center py-10 text-slate-400">
@@ -99,8 +95,8 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, onClose, onClear, 
                         </span>
                     )}
                     <span className="text-slate-500 text-xs block mt-0.5">
-                      {entry.quantity} {entry.originalItem.unit} x {entry.originalItem.price} ₽
-                      {entry.originalItem.isVariablePrice && ' (от)'}
+                      {entry.quantity} {entry.originalItem.unit} x {entry.price} ₽
+                      {entry.originalItem.isVariablePrice && !entry.originalItem.isPriceEditable && ' (от)'}
                     </span>
                   </div>
                   <div className="font-bold text-slate-800 whitespace-nowrap">
@@ -112,7 +108,6 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, onClose, onClear, 
           )}
         </div>
 
-        {/* Payment Method Selector */}
         {cartItems.length > 0 && (
             <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-100">
                 <p className="text-xs text-slate-500 mb-2 font-medium uppercase tracking-wider">Способ оплаты</p>
@@ -143,7 +138,6 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, onClose, onClear, 
             </div>
         )}
 
-        {/* Footer */}
         <div className="p-5 bg-slate-50 border-t border-slate-200 rounded-b-2xl">
           <div className="flex justify-between items-center mb-6">
             <span className="text-slate-600 font-medium">Общая сумма:</span>

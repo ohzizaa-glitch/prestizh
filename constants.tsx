@@ -5,7 +5,8 @@ import {
   Save, 
   Smartphone, 
   Video, 
-  Image as ImageIcon 
+  Image as ImageIcon,
+  Package
 } from 'lucide-react';
 import { ServiceCategory, ServiceVariant } from './types';
 
@@ -45,6 +46,18 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
       { id: 'restoration', name: 'Ретушь / реставрация', price: 200, unit: 'фото', isVariablePrice: true },
       { id: 'colorization', name: 'Колоризация (ч/б в цвет)', price: 400, unit: 'фото', isVariablePrice: true },
       { id: 'text', name: 'Добавление надписи', price: 30, unit: 'строка' },
+    ],
+  },
+  {
+    id: 'goods',
+    title: 'Товары',
+    icon: Package,
+    items: [
+      { id: 'goods_frames', name: 'Рамки', price: 0, unit: 'шт', isPriceEditable: true },
+      { id: 'goods_albums', name: 'Фотоальбомы', price: 0, unit: 'шт', isPriceEditable: true },
+      { id: 'goods_batteries', name: 'Батарейки', price: 0, unit: 'шт', isPriceEditable: true },
+      { id: 'goods_multifora', name: 'Мультифора', price: 4, unit: 'шт' },
+      { id: 'goods_bag', name: 'Пакет', price: 5, unit: 'шт' },
     ],
   },
   {

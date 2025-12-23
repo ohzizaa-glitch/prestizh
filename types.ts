@@ -13,6 +13,7 @@ export interface ServiceItem {
   unit?: string;
   isVariablePrice?: boolean;
   hasVariants?: boolean; // Flag to enable variant selector
+  isPriceEditable?: boolean; // Flag to allow manual price entry
 }
 
 export interface ServiceCategory {
