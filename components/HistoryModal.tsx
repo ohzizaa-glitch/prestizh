@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { X, History, CreditCard, Banknote, Calendar, Receipt } from 'lucide-react';
+import { X, History, CreditCard, Banknote, Calendar, Receipt, Trash2 } from 'lucide-react';
 import { Order } from '../types';
 import { DIGITAL_CATEGORY_IDS } from '../constants';
 
@@ -7,10 +8,11 @@ interface HistoryModalProps {
   orders: Order[];
   onClose: () => void;
   onClearHistory: () => void;
+  onDeleteOrder: (orderId: string) => void;
   onViewDigitalReceipt: (order: Order) => void;
 }
 
-const HistoryModal: React.FC<HistoryModalProps> = ({ orders, onClose, onClearHistory, onViewDigitalReceipt }) => {
+const HistoryModal: React.FC<HistoryModalProps> = ({ orders, onClose, onClearHistory, onDeleteOrder, onViewDigitalReceipt }) => {
   const [filter, setFilter] = useState<'all' | 'digital'>('all');
 
   const filteredOrders = orders.filter(order => {
@@ -60,11 +62,20 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ orders, onClose, onClearHis
             </div>
           ) : (
             filteredOrders.sort((a, b) => b.timestamp - a.timestamp).map(order => {
-              const hasDigital = order.items.some(i => DIGITAL_CATEGORY_IDS.includes(i.categoryId || ''));
-              
               return (
-                <div key={order.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
-                  <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-50">
+                <div key={order.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow relative group">
+                  {/* Delete Individual Order Button */}
+                  <button 
+                    onClick={() => {
+                      if(confirm('Удалить этот заказ из истории?')) onDeleteOrder(order.id);
+                    }}
+                    className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 transition-colors lg:opacity-0 lg:group-hover:opacity-100"
+                    title="Удалить заказ"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+
+                  <div className="flex justify-between items-start mb-3 pb-3 border-b border-slate-50 pr-8">
                     <div>
                       <div className="flex items-center space-x-2 text-slate-500 text-xs mb-1">
                           <Calendar size={12} />
@@ -125,11 +136,11 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ orders, onClose, onClearHis
              {orders.length > 0 && (
                  <button 
                     onClick={() => {
-                        if(confirm('Вы уверены, что хотите очистить всю историю?')) onClearHistory();
+                        if(confirm('Вы уверены, что хотите очистить ВСЮ историю?')) onClearHistory();
                     }}
                     className="text-red-500 text-sm font-medium hover:text-red-700 transition-colors px-4 py-2"
                  >
-                    Очистить историю
+                    Очистить всё
                  </button>
              )}
              <button 

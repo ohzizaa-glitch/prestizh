@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { SERVICE_CATEGORIES, PRINTING_CATEGORY, PHOTO_VARIANTS, DIGITAL_CATEGORY_IDS } from './constants';
 import ServiceCard from './components/ServiceCard';
@@ -67,6 +68,12 @@ export default function App() {
   const handleClearHistory = () => {
     setOrderHistory([]);
     localStorage.removeItem('prestige_order_history');
+  };
+
+  const handleDeleteOrder = (orderId: string) => {
+    const newHistory = orderHistory.filter(o => o.id !== orderId);
+    setOrderHistory(newHistory);
+    localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
   };
 
   const handleUpdateNextReceiptNum = (val: string) => {
@@ -340,6 +347,7 @@ export default function App() {
            orders={orderHistory}
            onClose={() => setIsHistoryOpen(false)}
            onClearHistory={handleClearHistory}
+           onDeleteOrder={handleDeleteOrder}
            onViewDigitalReceipt={(order) => {
               setActiveDigitalOrder(order);
               setIsHistoryOpen(false);
