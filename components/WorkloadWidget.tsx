@@ -86,7 +86,7 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
               onClick={() => onAddClient('urgent')}
               className="flex items-center justify-between px-4 py-3.5 rounded-2xl font-black text-xs uppercase tracking-tight transition-all border border-orange-500/30 bg-orange-500/5 text-orange-500 hover:bg-orange-500 hover:text-white shadow-sm"
             >
-              <div className="flex items-center gap-2"><Zap size={18} /><span>+ Срочный</span></div>
+              <div className="flex items-center gap-2"><Zap size={18} /><span>+ Тяжелый</span></div>
               <span className="opacity-50">20/15м</span>
             </button>
           </div>

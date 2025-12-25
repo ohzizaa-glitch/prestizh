@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
+import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw, RotateCw, RefreshCw } from 'lucide-react';
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
 
 interface PhotoCutterProps {
@@ -12,8 +12,8 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
   const [image, setImage] = useState<string | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<PhotoSpecs>(PHOTO_VARIANTS[0]);
   
-  // Состояние кадрирования: x, y в процентах (0-100), scale (зум)
-  const [crop, setCrop] = useState({ x: 50, y: 50, scale: 1 });
+  // Состояние кадрирования: x, y в процентах (0-100), scale (зум), rotation (градусы)
+  const [crop, setCrop] = useState({ x: 50, y: 50, scale: 1, rotation: 0 });
   
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -44,18 +44,30 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
       reader.onload = (event) => {
         setImage(event.target?.result as string);
         setIsImgLoaded(false);
-        setCrop({ x: 50, y: 50, scale: 1 });
+        setCrop({ x: 50, y: 50, scale: 1, rotation: 0 });
       };
       reader.readAsDataURL(file);
     }
   };
 
+  // Функция перемещения с учетом угла поворота
+  // dx, dy - смещение в системе координат ЭКРАНА (визуальное)
   const move = (dx: number, dy: number) => {
-    setCrop(prev => ({
-      ...prev,
-      x: Math.min(100, Math.max(0, prev.x + dx)),
-      y: Math.min(100, Math.max(0, prev.y + dy))
-    }));
+    setCrop(prev => {
+      // Конвертируем вектор движения экрана в вектор движения картинки с учетом поворота
+      const rad = (prev.rotation * Math.PI) / 180;
+      const cos = Math.cos(-rad);
+      const sin = Math.sin(-rad);
+      
+      const rdx = dx * cos - dy * sin;
+      const rdy = dx * sin + dy * cos;
+
+      return {
+        ...prev,
+        x: Math.min(100, Math.max(0, prev.x + rdx)),
+        y: Math.min(100, Math.max(0, prev.y + rdy))
+      };
+    });
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -67,7 +79,11 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     if (!isDragging) return;
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
-    move(-dx * 0.15, -dy * 0.15); // Чувствительность
+    
+    // Инвертируем dx/dy, так как мы тянем "картинку", а меняем координату центра кадра
+    // Если тянем мышь ВПРАВО, картинка едет ВПРАВО, значит центр кадра (относительно картинки) едет ВЛЕВО (уменьшается X)
+    move(-dx * 0.15, -dy * 0.15); 
+    
     setDragStart({ x: e.clientX, y: e.clientY });
   };
 
@@ -76,7 +92,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
   // ==========================================
   // 1. ФУНКЦИЯ ОТРИСОВКИ ДЛЯ ЭКРАНА (PREVIEW)
   // ==========================================
-  // Здесь рисуем линии разметки, используем низкое разрешение для быстродействия
   const renderPreview = useCallback(() => {
     const canvas = canvasRef.current;
     const img = imgRef.current;
@@ -85,7 +100,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Масштаб для экрана (достаточно 10 пикселей на 1 мм)
+    // Масштаб для экрана
     const PREVIEW_SCALE = 10; 
     
     const targetWidth = activeSpecs.widthMm * PREVIEW_SCALE;
@@ -98,21 +113,39 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetWidth, targetHeight);
 
+    // Сохраняем состояние контекста перед трансформациями
+    ctx.save();
+
+    // 1. Переносим начало координат в центр канваса
+    ctx.translate(targetWidth / 2, targetHeight / 2);
+
+    // 2. Поворачиваем
+    ctx.rotate((crop.rotation * Math.PI) / 180);
+
+    // 3. Масштабируем
+    // Логика: crop.scale - это зум. 
+    // Масштаб отрисовки = (высота канваса / высота картинки) * зум
+    const scaleFactor = (targetHeight / img.height) * crop.scale;
+    ctx.scale(scaleFactor, scaleFactor);
+
+    // 4. Смещаем картинку так, чтобы точка (crop.x, crop.y) оказалась в центре (0,0) текущей системы координат
+    const cx = img.width * (crop.x / 100);
+    const cy = img.height * (crop.y / 100);
+    ctx.translate(-cx, -cy);
+
+    // Фильтр ч/б (если нужно)
     if (activeSpecs.isGrayscale) ctx.filter = 'grayscale(100%)';
 
-    // Расчет координат (одинаковый для превью и экспорта)
-    const targetAspectRatio = activeSpecs.widthMm / activeSpecs.heightMm;
-    const sHeight = img.height / crop.scale;
-    const sWidth = sHeight * targetAspectRatio;
-    const sx = (img.width * (crop.x / 100)) - (sWidth / 2);
-    const sy = (img.height * (crop.y / 100)) - (sHeight / 2);
-
-    // Рисуем изображение
+    // Рисуем всю картинку
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
-    
+    ctx.drawImage(img, 0, 0);
+
+    // Восстанавливаем состояние (убираем поворот и смещение для отрисовки рамок)
+    ctx.restore();
     ctx.filter = 'none';
+
+    // === ОТРИСОВКА ПОВЕРХ КАРТИНКИ (РАМКИ И УГОЛКИ) ===
 
     // Рисуем уголок
     if (activeSpecs.cornerSide) {
@@ -132,7 +165,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
         ctx.fill();
     }
 
-    // === ЛИНИИ РАЗМЕТКИ (ТОЛЬКО ЗДЕСЬ) ===
+    // === ЛИНИИ РАЗМЕТКИ ===
     const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
       const yPx = yMm * PREVIEW_SCALE;
       ctx.beginPath();
@@ -177,7 +210,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
   // ==========================================
   // 2. ФУНКЦИЯ СОХРАНЕНИЯ В ФАЙЛ (EXPORT)
   // ==========================================
-  // ЭТОТ КОД ПОЛНОСТЬЮ ИЗОЛИРОВАН. Сюда НЕВОЗМОЖНО добавить линии случайно.
   const downloadResult = () => {
     const img = imgRef.current;
     if (!img) return;
@@ -186,8 +218,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     const ctx = offCanvas.getContext('2d');
     if (!ctx) return;
 
-    // МАСШТАБ ЭКСПОРТА (КАЧЕСТВО)
-    // 32 пикселя на 1 мм = ~800+ DPI. Это очень высокое качество.
+    // МАСШТАБ ЭКСПОРТА
     const EXPORT_SCALE = 32;
 
     const targetWidth = activeSpecs.widthMm * EXPORT_SCALE;
@@ -196,27 +227,30 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     offCanvas.width = targetWidth;
     offCanvas.height = targetHeight;
 
-    // Белый фон (критично для JPEG)
+    // Белый фон
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetWidth, targetHeight);
 
+    // ТРАНСФОРМАЦИЯ
+    ctx.save();
+    ctx.translate(targetWidth / 2, targetHeight / 2);
+    ctx.rotate((crop.rotation * Math.PI) / 180);
+    const scaleFactor = (targetHeight / img.height) * crop.scale;
+    ctx.scale(scaleFactor, scaleFactor);
+    const cx = img.width * (crop.x / 100);
+    const cy = img.height * (crop.y / 100);
+    ctx.translate(-cx, -cy);
+
     if (activeSpecs.isGrayscale) ctx.filter = 'grayscale(100%)';
-
-    // Расчет координат (копия логики из превью, но без рисовки)
-    const targetAspectRatio = activeSpecs.widthMm / activeSpecs.heightMm;
-    const sHeight = img.height / crop.scale;
-    const sWidth = sHeight * targetAspectRatio;
-    const sx = (img.width * (crop.x / 100)) - (sWidth / 2);
-    const sy = (img.height * (crop.y / 100)) - (sHeight / 2);
-
-    // Рисуем изображение с максимальным сглаживанием
+    
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
+    ctx.drawImage(img, 0, 0);
     
+    ctx.restore();
     ctx.filter = 'none';
 
-    // Рисуем уголок (он нужен на фото)
+    // Уголок
     if (activeSpecs.cornerSide) {
         const cornerSize = targetWidth * 0.28;
         ctx.fillStyle = '#FFFFFF';
@@ -234,12 +268,9 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
         ctx.fill();
     }
 
-    // !!! В ЭТОЙ ФУНКЦИИ НЕТ КОДА ДЛЯ РИСОВАНИЯ ЛИНИЙ !!!
-
     // Сохранение
     const link = document.createElement('a');
     link.download = `photo_${activeSpecs.id}_${Date.now()}.jpg`;
-    // Качество 1.0 (максимум), формат JPEG
     link.href = offCanvas.toDataURL('image/jpeg', 1.0); 
     document.body.appendChild(link);
     link.click();
@@ -283,8 +314,9 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
               </div>
 
               {/* Управление */}
-              <div className="flex flex-wrap justify-center gap-4 w-full max-w-md">
-                <div className={`p-2 rounded-2xl flex items-center gap-2 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+              <div className="flex flex-col gap-3 w-full max-w-md">
+                {/* 1. Навигация */}
+                <div className={`p-2 rounded-2xl flex items-center justify-center gap-2 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
                    <button onClick={() => move(0, -0.5)} className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><ChevronUp size={20} /></button>
                    <button onClick={() => move(0, 0.5)} className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><ChevronDown size={20} /></button>
                    <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
@@ -292,33 +324,61 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
                    <button onClick={() => move(0.5, 0)} className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><ChevronRight size={20} /></button>
                 </div>
 
-                <div className={`p-2 rounded-2xl flex items-center gap-3 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                  <button 
-                    onClick={() => setCrop(prev => ({ ...prev, scale: Math.max(0.1, prev.scale - 0.02) }))}
-                    className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"
-                  ><Minimize2 size={20}/></button>
-                  <input 
-                    type="range" 
-                    min="0.1" 
-                    max="3" 
-                    step="0.001" 
-                    value={crop.scale} 
-                    onChange={(e) => setCrop(prev => ({ ...prev, scale: parseFloat(e.target.value) }))}
-                    className="w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                  />
-                  <button 
-                    onClick={() => setCrop(prev => ({ ...prev, scale: prev.scale + 0.02 }))}
-                    className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"
-                  ><Maximize2 size={20}/></button>
-                </div>
+                <div className="flex gap-3">
+                    {/* 2. Зум */}
+                    <div className={`flex-1 p-2 rounded-2xl flex items-center gap-2 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                      <button 
+                        onClick={() => setCrop(prev => ({ ...prev, scale: Math.max(0.1, prev.scale - 0.02) }))}
+                        className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"
+                      ><Minimize2 size={18}/></button>
+                      <input 
+                        type="range" 
+                        min="0.1" 
+                        max="3" 
+                        step="0.001" 
+                        value={crop.scale} 
+                        onChange={(e) => setCrop(prev => ({ ...prev, scale: parseFloat(e.target.value) }))}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <button 
+                        onClick={() => setCrop(prev => ({ ...prev, scale: prev.scale + 0.02 }))}
+                        className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"
+                      ><Maximize2 size={18}/></button>
+                    </div>
 
-                <button 
-                  onClick={() => setCrop({ x: 50, y: 50, scale: 1 })}
-                  className={`p-3 rounded-2xl border shadow-sm transition-all hover:bg-orange-500 hover:text-white ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
-                  title="Сброс позиции"
-                >
-                  <RotateCcw size={20} />
-                </button>
+                    {/* 3. Вращение */}
+                     <div className={`flex-1 p-2 rounded-2xl flex items-center gap-2 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                      <button 
+                        onClick={() => setCrop(prev => ({ ...prev, rotation: prev.rotation - 90 }))}
+                        className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"
+                        title="Повернуть на 90°"
+                      ><RotateCw size={18}/></button>
+                      <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                      <input 
+                        type="range" 
+                        min="-20" 
+                        max="20" 
+                        step="0.1" 
+                        value={crop.rotation % 90} // Показываем отклонение от 90 градусов для слайдера
+                        onChange={(e) => {
+                            // Хитрая логика: слайдер регулирует "тонкую" настройку, сохраняя базовый поворот (0, 90, 180, 270)
+                            const baseRotation = Math.round(crop.rotation / 90) * 90;
+                            setCrop(prev => ({ ...prev, rotation: baseRotation + parseFloat(e.target.value) }))
+                        }}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                        title="Выравнивание (+/- 20°)"
+                      />
+                    </div>
+
+                    {/* 4. Сброс */}
+                    <button 
+                      onClick={() => setCrop({ x: 50, y: 50, scale: 1, rotation: 0 })}
+                      className={`p-3 rounded-2xl border shadow-sm transition-all hover:bg-red-500 hover:text-white ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
+                      title="Сброс"
+                    >
+                      <RefreshCw size={20} />
+                    </button>
+                </div>
               </div>
             </div>
           )}

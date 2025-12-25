@@ -98,7 +98,7 @@ export default function App() {
         type,
         remainingMs: initialDurationMs,
         totalDurationMs: initialDurationMs,
-        label: type === 'regular' ? `Клиент` : `СРОЧНЫЙ`
+        label: type === 'regular' ? `Клиент` : `ТЯЖЕЛЫЙ`
       };
       return [...prev, newClient];
     });
