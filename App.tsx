@@ -19,43 +19,88 @@ export default function App() {
   const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // 1. Инициализация темы сразу из памяти
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('prestige_theme') === 'dark';
   });
   
-  // Workload State (Clients Queue)
+  // 2. Инициализация очереди клиентов сразу из памяти (защита от сброса)
   const [clients, setClients] = useState<ActiveClient[]>(() => {
-    const saved = localStorage.getItem('prestige_clients_queue');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('prestige_clients_queue');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Ошибка загрузки очереди:', e);
+      return [];
+    }
   });
 
+  // 3. Инициализация ИСТОРИИ ЗАКАЗОВ сразу из памяти (КРИТИЧНО ДЛЯ СОХРАНЕНИЯ ОПЛАТ)
+  const [orderHistory, setOrderHistory] = useState<Order[]>(() => {
+    try {
+      const saved = localStorage.getItem('prestige_order_history');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.error('Ошибка загрузки истории:', e);
+      return [];
+    }
+  });
+
+  // 4. Инициализация номера квитанции
+  const [nextReceiptNumber, setNextReceiptNumber] = useState<number>(() => {
+    const saved = localStorage.getItem('prestige_next_receipt_num');
+    return saved ? parseInt(saved) : 554;
+  });
+
+  // --- ЭФФЕКТЫ АВТОМАТИЧЕСКОГО СОХРАНЕНИЯ ---
+  
+  // Сохраняем очередь при ЛЮБОМ изменении
   useEffect(() => {
     localStorage.setItem('prestige_clients_queue', JSON.stringify(clients));
   }, [clients]);
 
-  const handleAddClient = (type: 'regular' | 'urgent') => {
-    // Находим максимальное оставшееся время в текущей очереди
-    const maxRemainingMs = clients.reduce((max, c) => Math.max(max, c.remainingMs), 0);
-    
-    let initialDurationMs = 0;
-    
-    if (clients.length === 0) {
-      // Первый клиент получает полное время выполнения
-      initialDurationMs = type === 'regular' ? 15 * 60000 : 20 * 60000;
-    } else {
-      // Следующие клиенты получают +10 минут (как просил пользователь) к времени самого последнего заказа
-      const addMs = type === 'regular' ? 10 * 60000 : 15 * 60000;
-      initialDurationMs = maxRemainingMs + addMs;
-    }
+  // Сохраняем историю при ЛЮБОМ изменении (гарантия сохранности оплат)
+  useEffect(() => {
+    localStorage.setItem('prestige_order_history', JSON.stringify(orderHistory));
+  }, [orderHistory]);
 
-    const newClient: ActiveClient = {
-      id: Math.random().toString(36).substr(2, 9),
-      type,
-      remainingMs: initialDurationMs,
-      totalDurationMs: initialDurationMs,
-      label: type === 'regular' ? `Клиент` : `СРОЧНЫЙ`
-    };
-    setClients(prev => [...prev, newClient]);
+  // Сохраняем номер квитанции
+  useEffect(() => {
+    localStorage.setItem('prestige_next_receipt_num', nextReceiptNumber.toString());
+  }, [nextReceiptNumber]);
+
+  // Сохраняем тему
+  useEffect(() => {
+    localStorage.setItem('prestige_theme', isDarkMode ? 'dark' : 'light');
+    if (isDarkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
+  }, [isDarkMode]);
+
+
+  // --- ОБРАБОТЧИКИ ---
+
+  const handleAddClient = (type: 'regular' | 'urgent') => {
+    setClients(prev => {
+      const maxRemainingMs = prev.reduce((max, c) => Math.max(max, c.remainingMs), 0);
+      let initialDurationMs = 0;
+      
+      if (prev.length === 0) {
+        initialDurationMs = type === 'regular' ? 15 * 60000 : 20 * 60000;
+      } else {
+        const addMs = type === 'regular' ? 10 * 60000 : 15 * 60000;
+        initialDurationMs = maxRemainingMs + addMs;
+      }
+
+      const newClient: ActiveClient = {
+        id: Math.random().toString(36).substr(2, 9),
+        type,
+        remainingMs: initialDurationMs,
+        totalDurationMs: initialDurationMs,
+        label: type === 'regular' ? `Клиент` : `СРОЧНЫЙ`
+      };
+      return [...prev, newClient];
+    });
   };
 
   const handleRemoveClient = (id: string) => {
@@ -74,7 +119,6 @@ export default function App() {
     ));
   }, []);
 
-  // Убрали window.confirm для мгновенной реакции кнопки
   const handleClearQueue = () => {
     setClients([]);
   };
@@ -97,22 +141,7 @@ export default function App() {
     }, 3000);
   };
 
-  const [orderHistory, setOrderHistory] = useState<Order[]>([]);
-  const [nextReceiptNumber, setNextReceiptNumber] = useState<number>(554);
   const [activeDigitalOrder, setActiveDigitalOrder] = useState<Order | null>(null);
-
-  useEffect(() => {
-    const savedHistory = localStorage.getItem('prestige_order_history');
-    if (savedHistory) setOrderHistory(JSON.parse(savedHistory));
-    const savedNum = localStorage.getItem('prestige_next_receipt_num');
-    if (savedNum) setNextReceiptNumber(parseInt(savedNum));
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('prestige_theme', isDarkMode ? 'dark' : 'light');
-    if (isDarkMode) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
-  }, [isDarkMode]);
 
   const allItems = useMemo(() => {
     const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items.map(i => ({ ...i, categoryId: cat.id })));
@@ -159,28 +188,34 @@ export default function App() {
   };
 
   const handleClearHistory = () => {
-    setOrderHistory([]);
-    localStorage.removeItem('prestige_order_history');
+    setOrderHistory([]); // Эффект useEffect сам очистит localStorage
     showToast('История заказов удалена', 'error');
   };
 
   const handleDeleteOrder = (orderId: string) => {
-    const newHistory = orderHistory.filter(o => o.id !== orderId);
-    setOrderHistory(newHistory);
-    localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
+    setOrderHistory(prev => prev.filter(o => o.id !== orderId));
     showToast('Заказ удален из истории', 'info');
+  };
+
+  const handleImportHistory = (importedOrders: Order[]) => {
+    // Объединяем существующую историю с импортированной, избегая дубликатов по ID
+    setOrderHistory(prev => {
+      const existingIds = new Set(prev.map(o => o.id));
+      const newOrders = importedOrders.filter(o => !existingIds.has(o.id));
+      const merged = [...newOrders, ...prev];
+      // Сортируем по дате (новые сверху)
+      return merged.sort((a, b) => b.timestamp - a.timestamp);
+    });
+    showToast(`Импортировано ${importedOrders.length} заказов`);
   };
 
   const handleUpdateNextReceiptNum = (val: string) => {
     const num = parseInt(val) || 1;
     setNextReceiptNumber(num);
-    localStorage.setItem('prestige_next_receipt_num', num.toString());
   };
 
   const updateOrderInHistory = (updatedOrder: Order) => {
-    const newHistory = orderHistory.map(o => o.id === updatedOrder.id ? updatedOrder : o);
-    setOrderHistory(newHistory);
-    localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
+    setOrderHistory(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
     setActiveDigitalOrder(updatedOrder);
     showToast('Квитанция обновлена');
   };
@@ -247,18 +282,15 @@ export default function App() {
        timestamp: Date.now(),
        items: orderItems,
        totalAmount: totalPrice,
-       paymentMethod
+       paymentMethod // Здесь сохраняется метод оплаты (cash/card)
     };
 
-    if (hasDigitalItems) {
-      const nextNum = nextReceiptNumber + 1;
-      setNextReceiptNumber(nextNum);
-      localStorage.setItem('prestige_next_receipt_num', nextNum.toString());
-    }
+    // Обновляем историю через функциональное обновление, чтобы не потерять предыдущие данные
+    setOrderHistory(prev => [newOrder, ...prev]);
 
-    const newHistory = [newOrder, ...orderHistory];
-    setOrderHistory(newHistory);
-    localStorage.setItem('prestige_order_history', JSON.stringify(newHistory));
+    if (hasDigitalItems) {
+      setNextReceiptNumber(prev => prev + 1);
+    }
     
     setQuantities({});
     setCustomPrices({});
@@ -432,6 +464,7 @@ export default function App() {
           onClose={() => setIsHistoryOpen(false)} 
           onClearHistory={handleClearHistory} 
           onDeleteOrder={handleDeleteOrder} 
+          onImportHistory={handleImportHistory}
           onViewDigitalReceipt={(order) => { setActiveDigitalOrder(order); setIsHistoryOpen(false); }} 
           isDarkMode={isDarkMode}
         />

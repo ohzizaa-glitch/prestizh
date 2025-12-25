@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { X, History, CreditCard, Banknote, Calendar, Receipt, Trash2 } from 'lucide-react';
+import React, { useRef } from 'react';
+import { X, History, CreditCard, Banknote, Calendar, Receipt, Trash2, Download, Upload, Share2 } from 'lucide-react';
 import { Order } from '../types';
 
 interface HistoryModalProps {
@@ -8,17 +8,105 @@ interface HistoryModalProps {
   onClose: () => void;
   onClearHistory: () => void;
   onDeleteOrder: (orderId: string) => void;
+  onImportHistory: (orders: Order[]) => void;
   onViewDigitalReceipt: (order: Order) => void;
   isDarkMode: boolean;
 }
 
-const HistoryModal: React.FC<HistoryModalProps> = ({ orders, onClose, onClearHistory, onDeleteOrder, onViewDigitalReceipt, isDarkMode }) => {
-  const [filter, setFilter] = useState<'all' | 'digital'>('all');
+const HistoryModal: React.FC<HistoryModalProps> = ({ 
+  orders, 
+  onClose, 
+  onClearHistory, 
+  onDeleteOrder, 
+  onImportHistory,
+  onViewDigitalReceipt, 
+  isDarkMode 
+}) => {
+  const [filter, setFilter] = React.useState<'all' | 'digital'>('all');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredOrders = orders.filter(order => {
     if (filter === 'digital') return order.receiptNumber !== undefined;
     return true;
   });
+
+  // Функция для скачивания истории (Резервная копия)
+  const handleExport = () => {
+    const dataStr = JSON.stringify(orders, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `prestige_history_${new Date().toLocaleDateString('ru-RU')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // Функция для импорта (Восстановление)
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const json = JSON.parse(event.target?.result as string);
+        if (Array.isArray(json)) {
+          if (confirm(`Найдено ${json.length} записей. Импортировать?`)) {
+            onImportHistory(json);
+          }
+        } else {
+          alert('Ошибка: Неверный формат файла');
+        }
+      } catch (err) {
+        alert('Ошибка чтения файла');
+      }
+    };
+    reader.readAsText(file);
+    // Сброс value, чтобы можно было загрузить тот же файл снова при необходимости
+    e.target.value = '';
+  };
+
+  // Функция для шаринга отчета (Текстовый вид)
+  const handleShare = async () => {
+    const today = new Date().toLocaleDateString('ru-RU');
+    const todayOrders = orders.filter(o => new Date(o.timestamp).toLocaleDateString('ru-RU') === today);
+    
+    const total = todayOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+    const cash = todayOrders.filter(o => o.paymentMethod === 'cash').reduce((sum, o) => sum + o.totalAmount, 0);
+    const card = todayOrders.filter(o => o.paymentMethod === 'card').reduce((sum, o) => sum + o.totalAmount, 0);
+    const count = todayOrders.length;
+
+    const text = `📊 Отчет Престиж за ${today}:\n\n` +
+                 `💰 Всего: ${total} ₽\n` +
+                 `💵 Наличные: ${cash} ₽\n` +
+                 `💳 Карта: ${card} ₽\n` +
+                 `📝 Заказов: ${count} шт.\n\n` +
+                 `Сгенерировано в приложении.`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Отчет Престиж ${today}`,
+          text: text,
+        });
+      } catch (err) {
+        // Если отмена или ошибка шаринга, просто копируем в буфер
+        navigator.clipboard.writeText(text);
+        alert('Отчет скопирован в буфер обмена');
+      }
+    } else {
+      navigator.clipboard.writeText(text);
+      alert('Отчет скопирован в буфер обмена');
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -37,20 +125,54 @@ const HistoryModal: React.FC<HistoryModalProps> = ({ orders, onClose, onClearHis
           </button>
         </div>
 
-        {/* Filters */}
-        <div className={`px-5 py-3 border-b flex gap-2 ${isDarkMode ? 'border-slate-700' : 'border-slate-100'}`}>
-           <button 
-             onClick={() => setFilter('all')}
-             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
-           >
-             Все заказы
-           </button>
-           <button 
-             onClick={() => setFilter('digital')}
-             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'digital' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
-           >
-             Цифровые квитанции
-           </button>
+        {/* Tools & Filters */}
+        <div className={`px-5 py-3 border-b flex flex-wrap gap-2 items-center justify-between ${isDarkMode ? 'border-slate-700' : 'border-slate-100'}`}>
+           <div className="flex gap-2">
+             <button 
+               onClick={() => setFilter('all')}
+               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+             >
+               Все заказы
+             </button>
+             <button 
+               onClick={() => setFilter('digital')}
+               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'digital' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+             >
+               Цифровые квитанции
+             </button>
+           </div>
+
+           <div className="flex gap-2">
+              <button 
+                onClick={handleShare}
+                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-slate-700 text-emerald-400 hover:bg-slate-600' : 'bg-slate-100 text-emerald-600 hover:bg-slate-200'}`}
+                title="Поделиться отчетом за сегодня"
+              >
+                <Share2 size={16} />
+              </button>
+              <div className={`w-px h-8 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+              <button 
+                onClick={handleImportClick}
+                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-slate-700 text-blue-400 hover:bg-slate-600' : 'bg-slate-100 text-blue-600 hover:bg-slate-200'}`}
+                title="Загрузить историю из файла"
+              >
+                <Upload size={16} />
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                className="hidden" 
+                accept=".json" 
+                onChange={handleFileChange} 
+              />
+              <button 
+                onClick={handleExport}
+                className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-slate-700 text-orange-400 hover:bg-slate-600' : 'bg-slate-100 text-orange-600 hover:bg-slate-200'}`}
+                title="Скачать историю (Резервная копия)"
+              >
+                <Download size={16} />
+              </button>
+           </div>
         </div>
 
         {/* Content */}

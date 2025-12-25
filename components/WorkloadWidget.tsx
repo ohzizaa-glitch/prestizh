@@ -30,12 +30,14 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
   const lastTickRef = useRef(Date.now());
 
   useEffect(() => {
+    lastTickRef.current = Date.now();
+    
     const interval = setInterval(() => {
       const now = Date.now();
       const delta = now - lastTickRef.current;
       lastTickRef.current = now;
 
-      // Тикаем у всех активных клиентов только если массив не пустой
+      // Тикаем у всех активных клиентов
       if (clients && clients.length > 0) {
         clients.forEach(client => {
           if (client.remainingMs > 0) {
@@ -46,7 +48,7 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [clients.length, onUpdateClientTime]); // Зависим только от количества клиентов и функции обновления
+  }, [clients, onUpdateClientTime]); 
 
   const formatTime = (ms: number) => {
     const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -75,7 +77,7 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
           <div className="flex flex-col gap-2">
             <button 
               onClick={() => onAddClient('regular')}
-              className={`flex items-center justify-between px-4 py-3.5 rounded-2xl font-black text-xs uppercase tracking-tight transition-all border shadow-sm ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-blue-600' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white hover:border-blue-500'}`}
+              className={`flex items-center justify-between px-4 py-3.5 rounded-2xl font-black text-xs uppercase tracking-tight transition-all border shadow-sm ${isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:bg-blue-600 hover:text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-blue-600 hover:text-white hover:border-blue-500'}`}
             >
               <div className="flex items-center gap-2"><PlusCircle size={18} /><span>+ Обычный</span></div>
               <span className="opacity-50">15/10м</span>
