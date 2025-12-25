@@ -1,9 +1,12 @@
+
 import { LucideIcon } from 'lucide-react';
 
 export interface ServiceVariant {
   id: string;
   label: string;
   description?: string;
+  // Added optional price property to allow variants to have specific prices in calculations
+  price?: number;
 }
 
 export interface ServiceItem {
@@ -14,6 +17,8 @@ export interface ServiceItem {
   isVariablePrice?: boolean;
   hasVariants?: boolean; // Flag to enable variant selector
   isPriceEditable?: boolean; // Flag to allow manual price entry
+  // Added optional variants property to allow specific services to define their own variant list
+  variants?: ServiceVariant[];
 }
 
 export interface ServiceCategory {

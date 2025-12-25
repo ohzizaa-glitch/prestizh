@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { SERVICE_CATEGORIES, PRINTING_CATEGORY, PHOTO_VARIANTS, DIGITAL_CATEGORY_IDS } from './constants';
 import ServiceCard from './components/ServiceCard';
 import PrintingSection from './components/PrintingSection';
@@ -9,9 +9,10 @@ import EarningsModal from './components/EarningsModal';
 import DigitalReceiptModal from './components/DigitalReceiptModal';
 import PhotoCutter from './components/PhotoCutter';
 import CloudInbox from './components/CloudInbox';
+import WorkloadWidget, { ActiveClient } from './components/WorkloadWidget';
 import Toast from './components/Toast';
 import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload } from 'lucide-react';
-import { PaymentMethod, Order } from './types';
+import { PaymentMethod, Order, ServiceItem } from './types';
 
 export default function App() {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -21,6 +22,62 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('prestige_theme') === 'dark';
   });
+  
+  // Workload State (Clients Queue)
+  const [clients, setClients] = useState<ActiveClient[]>(() => {
+    const saved = localStorage.getItem('prestige_clients_queue');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('prestige_clients_queue', JSON.stringify(clients));
+  }, [clients]);
+
+  const handleAddClient = (type: 'regular' | 'urgent') => {
+    // Находим максимальное оставшееся время в текущей очереди
+    const maxRemainingMs = clients.reduce((max, c) => Math.max(max, c.remainingMs), 0);
+    
+    let initialDurationMs = 0;
+    
+    if (clients.length === 0) {
+      // Первый клиент получает полное время выполнения
+      initialDurationMs = type === 'regular' ? 15 * 60000 : 20 * 60000;
+    } else {
+      // Следующие клиенты получают +10 минут (как просил пользователь) к времени самого последнего заказа
+      const addMs = type === 'regular' ? 10 * 60000 : 15 * 60000;
+      initialDurationMs = maxRemainingMs + addMs;
+    }
+
+    const newClient: ActiveClient = {
+      id: Math.random().toString(36).substr(2, 9),
+      type,
+      remainingMs: initialDurationMs,
+      totalDurationMs: initialDurationMs,
+      label: type === 'regular' ? `Клиент` : `СРОЧНЫЙ`
+    };
+    setClients(prev => [...prev, newClient]);
+  };
+
+  const handleRemoveClient = (id: string) => {
+    setClients(prev => prev.filter(c => c.id !== id));
+  };
+
+  const handleUpdateClientTime = useCallback((id: string, deltaMs: number) => {
+    setClients(prev => prev.map(c => 
+      c.id === id 
+        ? { 
+            ...c, 
+            remainingMs: Math.max(0, c.remainingMs + deltaMs),
+            totalDurationMs: deltaMs > 0 ? c.totalDurationMs + deltaMs : c.totalDurationMs 
+          } 
+        : c
+    ));
+  }, []);
+
+  // Убрали window.confirm для мгновенной реакции кнопки
+  const handleClearQueue = () => {
+    setClients([]);
+  };
   
   // Modals States
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -56,6 +113,28 @@ export default function App() {
     if (isDarkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
+
+  const allItems = useMemo(() => {
+    const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items.map(i => ({ ...i, categoryId: cat.id })));
+    const printingItems = PRINTING_CATEGORY.items.map(i => ({ ...i, categoryId: PRINTING_CATEGORY.id }));
+    return [...standardItems, ...printingItems];
+  }, []);
+
+  const getActualPrice = (item: ServiceItem, qty: number, variantId?: string) => {
+    if (item.id === 'print_10x15' && qty >= 100) return 19;
+    if (item.id === 'print_15x20' && qty >= 50) return 35;
+    if (item.id === 'print_20x30' && qty >= 30) return 75;
+
+    if (variantId) {
+       const variantsList = item.variants || PHOTO_VARIANTS;
+       const v = variantsList.find(v => v.id === variantId);
+       if (v?.price !== undefined) return v.price;
+    }
+
+    if (item.isPriceEditable && customPrices[item.id]) return customPrices[item.id];
+
+    return item.price;
+  };
 
   const handleQuantityChange = (id: string, qty: number) => {
     setQuantities(prev => {
@@ -106,12 +185,6 @@ export default function App() {
     showToast('Квитанция обновлена');
   };
 
-  const allItems = useMemo(() => {
-    const standardItems = SERVICE_CATEGORIES.flatMap(cat => cat.items.map(i => ({ ...i, categoryId: cat.id })));
-    const printingItems = PRINTING_CATEGORY.items.map(i => ({ ...i, categoryId: PRINTING_CATEGORY.id }));
-    return [...standardItems, ...printingItems];
-  }, []);
-
   const filteredCategories = useMemo(() => {
     if (!searchQuery.trim()) return SERVICE_CATEGORIES;
     const query = searchQuery.toLowerCase();
@@ -124,9 +197,10 @@ export default function App() {
   const totalPrice = useMemo(() => {
     return Object.entries(quantities).reduce((total, [key, value]) => {
       const qty = value as number;
-      const [itemId] = key.split('__');
+      const [itemId, variantId] = key.split('__');
       const item = allItems.find(i => i.id === itemId);
-      const price = (item?.isPriceEditable ? (customPrices[itemId] || 0) : (item?.price || 0));
+      if (!item) return total;
+      const price = getActualPrice(item, qty, variantId);
       return total + (qty * price);
     }, 0);
   }, [allItems, quantities, customPrices]);
@@ -144,8 +218,9 @@ export default function App() {
        const [itemId, variantId] = key.split('__');
        const item = allItems.find(i => i.id === itemId);
        if(item) {
-          const variant = variantId ? PHOTO_VARIANTS.find(v => v.id === variantId) : undefined;
-          const price = item.isPriceEditable ? (customPrices[itemId] || 0) : item.price;
+          const variantsList = item.variants || PHOTO_VARIANTS;
+          const variant = variantId ? variantsList.find(v => v.id === variantId) : undefined;
+          const price = getActualPrice(item, qty, variantId);
           const itemData = {
              name: item.name,
              variant: variant?.label,
@@ -273,6 +348,19 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 py-8 pb-32">
+        
+        {/* Workload Widget */}
+        {!searchQuery && (
+          <WorkloadWidget 
+            clients={clients} 
+            onAddClient={handleAddClient}
+            onRemoveClient={handleRemoveClient}
+            onUpdateClientTime={handleUpdateClientTime}
+            onClearAll={handleClearQueue}
+            isDarkMode={isDarkMode} 
+          />
+        )}
+
         {!searchQuery && (
           <PrintingSection 
             category={PRINTING_CATEGORY} 
