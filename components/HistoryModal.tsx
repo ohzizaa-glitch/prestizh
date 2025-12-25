@@ -22,11 +22,13 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
   onViewDigitalReceipt, 
   isDarkMode 
 }) => {
-  const [filter, setFilter] = React.useState<'all' | 'digital'>('all');
+  const [filter, setFilter] = React.useState<'all' | 'digital' | 'cash' | 'card'>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredOrders = orders.filter(order => {
     if (filter === 'digital') return order.receiptNumber !== undefined;
+    if (filter === 'cash') return order.paymentMethod === 'cash';
+    if (filter === 'card') return order.paymentMethod === 'card';
     return true;
   });
 
@@ -126,23 +128,35 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
         </div>
 
         {/* Tools & Filters */}
-        <div className={`px-5 py-3 border-b flex flex-wrap gap-2 items-center justify-between ${isDarkMode ? 'border-slate-700' : 'border-slate-100'}`}>
-           <div className="flex gap-2">
+        <div className={`px-5 py-3 border-b flex flex-col sm:flex-row gap-3 items-center justify-between ${isDarkMode ? 'border-slate-700' : 'border-slate-100'}`}>
+           <div className="flex gap-2 w-full sm:w-auto overflow-x-auto no-scrollbar pb-1 sm:pb-0">
              <button 
                onClick={() => setFilter('all')}
-               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${filter === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
              >
-               Все заказы
+               Все
              </button>
              <button 
                onClick={() => setFilter('digital')}
-               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === 'digital' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${filter === 'digital' ? 'bg-red-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
              >
-               Цифровые квитанции
+               Цифровые
+             </button>
+             <button 
+               onClick={() => setFilter('cash')}
+               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${filter === 'cash' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+             >
+               Наличные
+             </button>
+             <button 
+               onClick={() => setFilter('card')}
+               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${filter === 'card' ? 'bg-purple-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-700'}`}
+             >
+               Карта
              </button>
            </div>
 
-           <div className="flex gap-2">
+           <div className="flex gap-2 w-full sm:w-auto justify-end">
               <button 
                 onClick={handleShare}
                 className={`p-2 rounded-lg transition-colors ${isDarkMode ? 'bg-slate-700 text-emerald-400 hover:bg-slate-600' : 'bg-slate-100 text-emerald-600 hover:bg-slate-200'}`}
