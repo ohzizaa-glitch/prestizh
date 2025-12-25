@@ -82,6 +82,10 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Включаем максимальное качество сглаживания
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
     const specs = activeSpecs;
     const targetWidth = specs.widthMm * scale;
     const targetHeight = specs.heightMm * scale;
@@ -89,7 +93,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
-    // Очистка и фон
+    // Очистка и белый фон (важно для JPEG, так как прозрачность станет черной)
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetWidth, targetHeight);
 
@@ -179,8 +183,9 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     drawCanvasContent(offCanvas, 32, false);
     
     const link = document.createElement('a');
-    link.download = `photo_${activeSpecs.id}.png`;
-    link.href = offCanvas.toDataURL('image/png', 1.0);
+    link.download = `photo_${activeSpecs.id}.jpg`;
+    // Сохраняем в JPEG с максимальным качеством (1.0)
+    link.href = offCanvas.toDataURL('image/jpeg', 1.0);
     link.click();
     
     // offCanvas будет удален сборщиком мусора
