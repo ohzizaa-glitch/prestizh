@@ -11,7 +11,7 @@ import PhotoCutter from './components/PhotoCutter';
 import CloudInbox from './components/CloudInbox';
 import WorkloadWidget, { ActiveClient } from './components/WorkloadWidget';
 import Toast from './components/Toast';
-import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload } from 'lucide-react';
+import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload, Menu, X, ChevronRight } from 'lucide-react';
 import { PaymentMethod, Order, ServiceItem } from './types';
 
 export default function App() {
@@ -19,6 +19,7 @@ export default function App() {
   const [customPrices, setCustomPrices] = useState<Record<string, number>>({});
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   
   // 1. Инициализация темы сразу из памяти
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -140,6 +141,33 @@ export default function App() {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 3000);
   };
+
+  // --- SHORTCUTS (ГОРЯЧИЕ КЛАВИШИ) ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Игнорируем нажатия, если пользователь печатает в поле ввода
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) {
+        return;
+      }
+
+      // Клавиша "L" (Layout/Layers/Passport) - Фото на паспорт РФ
+      if (e.key.toLowerCase() === 'l') {
+        const itemId = 'doc_photo';
+        const variantId = '3.5x4.5_rf'; // ID варианта Паспорт РФ из constants.tsx
+        const quantityKey = `${itemId}__${variantId}`;
+
+        setQuantities(prev => ({
+          ...prev,
+          [quantityKey]: (prev[quantityKey] || 0) + 1
+        }));
+        
+        showToast('Быстрое добавление: Фото на паспорт РФ', 'success');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const [activeDigitalOrder, setActiveDigitalOrder] = useState<Order | null>(null);
 
@@ -302,6 +330,14 @@ export default function App() {
     }
   };
 
+  const scrollToCategory = (id: string) => {
+    setIsMenuOpen(false);
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
   return (
     <div className={`min-h-screen transition-colors duration-300 dark:bg-slate-900 bg-slate-50`}>
       <Toast toasts={toasts} />
@@ -310,12 +346,21 @@ export default function App() {
       <header className="sticky top-0 z-40 dark:bg-slate-800/90 bg-white/90 backdrop-blur-md border-b dark:border-slate-700 border-slate-200 shadow-sm transition-colors">
         <div className="max-w-6xl mx-auto px-4 pt-4 pb-2">
           <div className="flex items-center justify-between gap-4 mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="bg-blue-600 text-white p-2 rounded-xl shadow-lg shadow-blue-500/20">
-                <span className="font-black text-xl tracking-tighter">П</span>
+            <div 
+              className="flex items-center space-x-3 cursor-pointer group hover:opacity-80 transition-opacity"
+              onClick={() => setIsMenuOpen(true)}
+              title="Открыть меню навигации"
+            >
+              <div className="relative">
+                <div className="bg-blue-600 text-white p-2 rounded-xl shadow-lg shadow-blue-500/20 z-10 relative">
+                  <span className="font-black text-xl tracking-tighter">П</span>
+                </div>
+                <div className="absolute -right-2 -bottom-2 bg-slate-900 text-white p-1 rounded-full border-2 border-white dark:border-slate-800 opacity-0 group-hover:opacity-100 transition-opacity transform scale-75">
+                  <Menu size={12} />
+                </div>
               </div>
               <div className="hidden sm:block">
-                <h1 className="text-lg font-black uppercase tracking-tighter leading-none dark:text-white text-slate-800">Престиж</h1>
+                <h1 className="text-lg font-black uppercase tracking-tighter leading-none dark:text-white text-slate-800 group-hover:text-blue-600 transition-colors">Престиж</h1>
                 <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Professional Studio</p>
               </div>
             </div>
@@ -395,6 +440,7 @@ export default function App() {
 
         {!searchQuery && (
           <PrintingSection 
+            id="category-printing"
             category={PRINTING_CATEGORY} 
             quantities={quantities} 
             onQuantityChange={handleQuantityChange} 
@@ -406,6 +452,7 @@ export default function App() {
           {filteredCategories.map(category => (
             <ServiceCard 
               key={category.id}
+              id={`category-${category.id}`}
               category={category} 
               quantities={quantities} 
               customPrices={customPrices} 
@@ -443,6 +490,68 @@ export default function App() {
               </span>
             )}
           </button>
+        </div>
+      </div>
+
+      {/* Navigation Drawer (Sidebar) */}
+      <div className={`fixed inset-0 z-50 transition-all duration-300 ${isMenuOpen ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+        {/* Backdrop */}
+        <div 
+          className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isMenuOpen ? 'opacity-100' : 'opacity-0'}`}
+          onClick={() => setIsMenuOpen(false)}
+        />
+        
+        {/* Drawer */}
+        <div className={`absolute top-0 left-0 h-full w-80 max-w-[85vw] shadow-2xl transform transition-transform duration-300 flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'} ${isDarkMode ? 'bg-slate-900 border-r border-slate-700' : 'bg-white'}`}>
+           <div className={`p-6 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+              <div className="flex items-center space-x-3">
+                <div className="bg-blue-600 text-white p-2 rounded-xl">
+                  <span className="font-black text-xl tracking-tighter">П</span>
+                </div>
+                <span className={`font-black uppercase tracking-tighter text-lg ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Навигация</span>
+              </div>
+              <button 
+                onClick={() => setIsMenuOpen(false)}
+                className={`p-2 rounded-xl transition-colors ${isDarkMode ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+              >
+                <X size={24} />
+              </button>
+           </div>
+           
+           <div className="flex-grow overflow-y-auto p-4 space-y-2 custom-scrollbar">
+              <button
+                onClick={() => scrollToCategory('category-printing')}
+                className={`w-full p-4 rounded-xl flex items-center justify-between group transition-all ${isDarkMode ? 'bg-gradient-to-r from-blue-900/20 to-transparent hover:from-blue-900/40 text-blue-200' : 'bg-gradient-to-r from-blue-50 to-transparent hover:from-blue-100 text-blue-800'}`}
+              >
+                 <div className="flex items-center space-x-3">
+                    <PRINTING_CATEGORY.icon size={20} />
+                    <span className="font-bold">{PRINTING_CATEGORY.title}</span>
+                 </div>
+                 <ChevronRight size={16} className="opacity-50 group-hover:translate-x-1 transition-transform" />
+              </button>
+              
+              <div className={`h-px w-full my-4 ${isDarkMode ? 'bg-slate-800' : 'bg-slate-100'}`}></div>
+
+              {SERVICE_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => scrollToCategory(`category-${cat.id}`)}
+                  className={`w-full p-3 rounded-xl flex items-center justify-between group transition-all ${isDarkMode ? 'hover:bg-slate-800 text-slate-300 hover:text-white' : 'hover:bg-slate-50 text-slate-600 hover:text-slate-900'}`}
+                >
+                   <div className="flex items-center space-x-3">
+                      <cat.icon size={20} className={isDarkMode ? 'text-slate-500 group-hover:text-blue-400' : 'text-slate-400 group-hover:text-blue-600'} />
+                      <span className="font-bold text-sm">{cat.title}</span>
+                   </div>
+                   <ChevronRight size={16} className="opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+                </button>
+              ))}
+           </div>
+
+           <div className={`p-6 border-t ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+              <p className="text-center text-[10px] uppercase font-black tracking-widest text-slate-500">
+                Prestige Calculator v2.1
+              </p>
+           </div>
         </div>
       </div>
 

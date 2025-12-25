@@ -9,11 +9,12 @@ interface PrintingSectionProps {
   quantities: Record<string, number>;
   onQuantityChange: (id: string, qty: number) => void;
   isDarkMode: boolean;
+  id?: string;
 }
 
-const PrintingSection: React.FC<PrintingSectionProps> = ({ category, quantities, onQuantityChange, isDarkMode }) => {
+const PrintingSection: React.FC<PrintingSectionProps> = ({ category, quantities, onQuantityChange, isDarkMode, id }) => {
   return (
-    <div className={`rounded-2xl border overflow-hidden mb-8 transition-all ${isDarkMode ? 'bg-gradient-to-br from-slate-800 to-slate-900 border-slate-700' : 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-100'}`}>
+    <div id={id} className={`scroll-mt-28 rounded-2xl border overflow-hidden mb-8 transition-all ${isDarkMode ? 'bg-gradient-to-br from-slate-800 to-slate-900 border-slate-700' : 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-100'}`}>
       <div className="p-6">
         <div className="flex items-center space-x-3 mb-6">
           <div className="bg-blue-600 text-white p-2 rounded-xl shadow-lg shadow-blue-500/20">

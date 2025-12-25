@@ -12,6 +12,7 @@ interface ServiceCardProps {
   onQuantityChange: (id: string, qty: number) => void;
   onPriceChange: (id: string, price: number) => void;
   isDarkMode: boolean;
+  id?: string;
 }
 
 const ServiceCard: React.FC<ServiceCardProps> = ({ 
@@ -20,7 +21,8 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
   customPrices, 
   onQuantityChange, 
   onPriceChange,
-  isDarkMode
+  isDarkMode,
+  id
 }) => {
   const Icon = category.icon;
   const [selectedVariants, setSelectedVariants] = useState<Record<string, string>>({});
@@ -32,7 +34,7 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
   };
 
   return (
-    <div className={`rounded-2xl shadow-sm border overflow-hidden flex flex-col h-full hover:shadow-xl transition-all duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+    <div id={id} className={`scroll-mt-28 rounded-2xl shadow-sm border overflow-hidden flex flex-col h-full hover:shadow-xl transition-all duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
       <div className={`p-4 border-b flex items-center space-x-3 ${isDarkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
         <div className={`p-2 rounded-xl ${isDarkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-600'}`}>
           <Icon size={24} />

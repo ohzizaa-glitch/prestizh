@@ -24,8 +24,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [isImgLoaded, setIsImgLoaded] = useState(false);
 
-  const VIEWPORT_SCALE = 8; 
-
   const activeSpecs = useMemo(() => {
     return isCustom ? {
       ...selectedVariant,
@@ -76,17 +74,17 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
 
   const handleMouseUp = () => setIsDragging(false);
 
-  const renderFrame = useCallback(() => {
-    const canvas = canvasRef.current;
+  // Универсальная функция рисования
+  const drawCanvasContent = (canvas: HTMLCanvasElement, scale: number, withGuides: boolean) => {
     const img = imgRef.current;
-    if (!canvas || !img || !isImgLoaded) return;
+    if (!img || !isImgLoaded) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const specs = activeSpecs;
-    const targetWidth = specs.widthMm * VIEWPORT_SCALE;
-    const targetHeight = specs.heightMm * VIEWPORT_SCALE;
+    const targetWidth = specs.widthMm * scale;
+    const targetHeight = specs.heightMm * scale;
 
     canvas.width = targetWidth;
     canvas.height = targetHeight;
@@ -103,72 +101,89 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     const sx = (img.width * (crop.x / 100)) - (sWidth / 2);
     const sy = (img.height * (crop.y / 100)) - (sHeight / 2);
 
+    // Рисуем изображение
     ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
     ctx.filter = 'none';
 
-    // РИСОВАНИЕ ЛИНИЙ (Биометрия) - Возвращаем как было
-    const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
-      const yPx = yMm * VIEWPORT_SCALE;
-      ctx.beginPath();
-      if (isDashed) ctx.setLineDash([4, 4]);
-      else ctx.setLineDash([]);
-      
-      ctx.moveTo(0, yPx);
-      ctx.lineTo(targetWidth, yPx);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      ctx.setLineDash([]);
-    };
-
-    if (specs.faceHeightMin > 0) {
-      // Верхняя граница (макушка) - Красные линии
-      drawLine(specs.topMarginMin, 'rgba(255, 0, 0, 0.6)'); 
-      drawLine(specs.topMarginMax, 'rgba(255, 0, 0, 0.3)', true);
-      
-      // Нижняя граница (подбородок) - Синие линии
-      drawLine(specs.topMarginMin + specs.faceHeightMin, 'rgba(0, 0, 255, 0.6)');
-      drawLine(specs.topMarginMax + specs.faceHeightMax, 'rgba(0, 0, 255, 0.3)', true);
-
-      // Центральная вертикальная линия
-      ctx.beginPath();
-      ctx.setLineDash([2, 2]);
-      ctx.moveTo(targetWidth / 2, 0);
-      ctx.lineTo(targetWidth / 2, targetHeight);
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-      ctx.stroke();
-      ctx.setLineDash([]);
+    // Рисуем уголок (он нужен и на фото)
+    if (specs.cornerSide) {
+        const cornerSize = targetWidth * 0.28;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        if (specs.cornerSide === 'left') {
+          ctx.moveTo(0, targetHeight - cornerSize);
+          ctx.quadraticCurveTo(cornerSize, targetHeight - cornerSize, cornerSize, targetHeight);
+          ctx.lineTo(0, targetHeight);
+        } else {
+          ctx.moveTo(targetWidth, targetHeight - cornerSize);
+          ctx.quadraticCurveTo(targetWidth - cornerSize, targetHeight - cornerSize, targetWidth - cornerSize, targetHeight);
+          ctx.lineTo(targetWidth, targetHeight);
+        }
+        ctx.closePath();
+        ctx.fill();
     }
 
-    // Уголок (если есть)
-    if (specs.cornerSide) {
-      const cornerSize = targetWidth * 0.28;
-      ctx.fillStyle = '#FFFFFF';
-      ctx.beginPath();
-      if (specs.cornerSide === 'left') {
-        ctx.moveTo(0, targetHeight - cornerSize);
-        ctx.quadraticCurveTo(cornerSize, targetHeight - cornerSize, cornerSize, targetHeight);
-        ctx.lineTo(0, targetHeight);
-      } else {
-        ctx.moveTo(targetWidth, targetHeight - cornerSize);
-        ctx.quadraticCurveTo(targetWidth - cornerSize, targetHeight - cornerSize, targetWidth - cornerSize, targetHeight);
-        ctx.lineTo(targetWidth, targetHeight);
+    // Рисуем линии разметки (только если withGuides = true)
+    if (withGuides) {
+      const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
+        const yPx = yMm * scale;
+        ctx.beginPath();
+        if (isDashed) ctx.setLineDash([4 * (scale/8), 4 * (scale/8)]);
+        else ctx.setLineDash([]);
+        
+        ctx.moveTo(0, yPx);
+        ctx.lineTo(targetWidth, yPx);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(1, scale / 8);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      };
+
+      if (specs.faceHeightMin > 0) {
+        // Верхняя граница (макушка) - Красные линии
+        drawLine(specs.topMarginMin, 'rgba(255, 0, 0, 0.6)'); 
+        drawLine(specs.topMarginMax, 'rgba(255, 0, 0, 0.3)', true);
+        
+        // Нижняя граница (подбородок) - Синие линии
+        drawLine(specs.topMarginMin + specs.faceHeightMin, 'rgba(0, 0, 255, 0.6)');
+        drawLine(specs.topMarginMax + specs.faceHeightMax, 'rgba(0, 0, 255, 0.3)', true);
+
+        // Центральная вертикальная линия
+        ctx.beginPath();
+        ctx.setLineDash([2 * (scale/8), 2 * (scale/8)]);
+        ctx.moveTo(targetWidth / 2, 0);
+        ctx.lineTo(targetWidth / 2, targetHeight);
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
+        ctx.lineWidth = Math.max(1, scale / 8);
+        ctx.stroke();
+        ctx.setLineDash([]);
       }
-      ctx.closePath();
-      ctx.fill();
+    }
+  };
+
+  const renderPreview = useCallback(() => {
+    if (canvasRef.current) {
+      // Для превью используем масштаб 8 (достаточно для экрана) и включаем линии
+      drawCanvasContent(canvasRef.current, 8, true);
     }
   }, [crop, activeSpecs, isImgLoaded]);
 
   useEffect(() => {
-    if (isImgLoaded) renderFrame();
-  }, [renderFrame, isImgLoaded]);
+    if (isImgLoaded) renderPreview();
+  }, [renderPreview, isImgLoaded]);
 
   const downloadResult = () => {
-    if (!canvasRef.current) return;
+    // Для скачивания создаем временный канвас
+    const offCanvas = document.createElement('canvas');
+    // Используем масштаб 32 (около 800 DPI) и ОТКЛЮЧАЕМ линии (false)
+    drawCanvasContent(offCanvas, 32, false);
+    
     const link = document.createElement('a');
     link.download = `photo_${activeSpecs.id}.png`;
-    link.href = canvasRef.current.toDataURL('image/png', 1.0);
+    link.href = offCanvas.toDataURL('image/png', 1.0);
     link.click();
+    
+    // offCanvas будет удален сборщиком мусора
   };
 
   return (
@@ -198,7 +213,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                <canvas ref={canvasRef} />
+                <canvas ref={canvasRef} style={{ maxHeight: '50vh', maxWidth: '100%', objectFit: 'contain' }} />
                 <img 
                   ref={imgRef}
                   src={image} 
@@ -288,6 +303,9 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
               <Check size={20} />
               <span>Сохранить результат</span>
             </button>
+            <p className="text-[10px] text-center text-slate-400 font-bold">
+               Размер файла будет соответствовать 800 DPI
+            </p>
           </div>
         </div>
       </div>
