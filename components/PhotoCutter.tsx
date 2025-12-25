@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw } from 'lucide-react';
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
@@ -12,7 +11,10 @@ interface PhotoCutterProps {
 const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
   const [image, setImage] = useState<string | null>(null);
   const [selectedVariant, setSelectedVariant] = useState<PhotoSpecs>(PHOTO_VARIANTS[0]);
+  
+  // Состояние кадрирования: x, y в процентах (0-100), scale (зум)
   const [crop, setCrop] = useState({ x: 50, y: 50, scale: 1 });
+  
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   
@@ -65,56 +67,59 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
     if (!isDragging) return;
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
-    
-    // Чувствительность перемещения мышью
-    const sensitivity = 0.15;
-    move(-dx * sensitivity, -dy * sensitivity);
+    move(-dx * 0.15, -dy * 0.15); // Чувствительность
     setDragStart({ x: e.clientX, y: e.clientY });
   };
 
   const handleMouseUp = () => setIsDragging(false);
 
-  // Универсальная функция рисования
-  const drawCanvasContent = (canvas: HTMLCanvasElement, scale: number, withGuides: boolean) => {
+  // ==========================================
+  // 1. ФУНКЦИЯ ОТРИСОВКИ ДЛЯ ЭКРАНА (PREVIEW)
+  // ==========================================
+  // Здесь рисуем линии разметки, используем низкое разрешение для быстродействия
+  const renderPreview = useCallback(() => {
+    const canvas = canvasRef.current;
     const img = imgRef.current;
-    if (!img || !isImgLoaded) return;
+    if (!canvas || !img || !isImgLoaded) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Включаем максимальное качество сглаживания
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-
-    const specs = activeSpecs;
-    const targetWidth = specs.widthMm * scale;
-    const targetHeight = specs.heightMm * scale;
+    // Масштаб для экрана (достаточно 10 пикселей на 1 мм)
+    const PREVIEW_SCALE = 10; 
+    
+    const targetWidth = activeSpecs.widthMm * PREVIEW_SCALE;
+    const targetHeight = activeSpecs.heightMm * PREVIEW_SCALE;
 
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
-    // Очистка и белый фон (важно для JPEG, так как прозрачность станет черной)
+    // Фон
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetWidth, targetHeight);
 
-    if (specs.isGrayscale) ctx.filter = 'grayscale(100%)';
+    if (activeSpecs.isGrayscale) ctx.filter = 'grayscale(100%)';
 
-    const targetAspectRatio = specs.widthMm / specs.heightMm;
+    // Расчет координат (одинаковый для превью и экспорта)
+    const targetAspectRatio = activeSpecs.widthMm / activeSpecs.heightMm;
     const sHeight = img.height / crop.scale;
     const sWidth = sHeight * targetAspectRatio;
     const sx = (img.width * (crop.x / 100)) - (sWidth / 2);
     const sy = (img.height * (crop.y / 100)) - (sHeight / 2);
 
     // Рисуем изображение
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
+    
     ctx.filter = 'none';
 
-    // Рисуем уголок (он нужен и на фото)
-    if (specs.cornerSide) {
-        const cornerSize = targetWidth * 0.28;
+    // Рисуем уголок
+    if (activeSpecs.cornerSide) {
+        const cornerSize = targetWidth * 0.28; 
         ctx.fillStyle = '#FFFFFF';
         ctx.beginPath();
-        if (specs.cornerSide === 'left') {
+        if (activeSpecs.cornerSide === 'left') {
           ctx.moveTo(0, targetHeight - cornerSize);
           ctx.quadraticCurveTo(cornerSize, targetHeight - cornerSize, cornerSize, targetHeight);
           ctx.lineTo(0, targetHeight);
@@ -127,75 +132,125 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
         ctx.fill();
     }
 
-    // Рисуем линии разметки (только если withGuides = true)
-    if (withGuides) {
-      const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
-        const yPx = yMm * scale;
-        ctx.beginPath();
-        if (isDashed) ctx.setLineDash([4 * (scale/8), 4 * (scale/8)]);
-        else ctx.setLineDash([]);
-        
-        ctx.moveTo(0, yPx);
-        ctx.lineTo(targetWidth, yPx);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = Math.max(1, scale / 8);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      };
+    // === ЛИНИИ РАЗМЕТКИ (ТОЛЬКО ЗДЕСЬ) ===
+    const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
+      const yPx = yMm * PREVIEW_SCALE;
+      ctx.beginPath();
+      if (isDashed) ctx.setLineDash([5, 5]);
+      else ctx.setLineDash([]);
+      
+      ctx.moveTo(0, yPx);
+      ctx.lineTo(targetWidth, yPx);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    };
 
-      if (specs.faceHeightMin > 0) {
-        // Верхняя граница (макушка) - Красные линии
-        drawLine(specs.topMarginMin, 'rgba(255, 0, 0, 0.6)'); 
-        drawLine(specs.topMarginMax, 'rgba(255, 0, 0, 0.3)', true);
-        
-        // Нижняя граница (подбородок) - Синие линии
-        drawLine(specs.topMarginMin + specs.faceHeightMin, 'rgba(0, 0, 255, 0.6)');
-        drawLine(specs.topMarginMax + specs.faceHeightMax, 'rgba(0, 0, 255, 0.3)', true);
+    if (activeSpecs.faceHeightMin > 0) {
+      // Верхняя граница (Красные)
+      drawLine(activeSpecs.topMarginMin, 'rgba(255, 0, 0, 0.8)'); 
+      drawLine(activeSpecs.topMarginMax, 'rgba(255, 0, 0, 0.4)', true);
+      
+      // Нижняя граница (Синие)
+      drawLine(activeSpecs.topMarginMin + activeSpecs.faceHeightMin, 'rgba(0, 0, 255, 0.8)');
+      drawLine(activeSpecs.topMarginMax + activeSpecs.faceHeightMax, 'rgba(0, 0, 255, 0.4)', true);
 
-        // Центральная вертикальная линия
-        ctx.beginPath();
-        ctx.setLineDash([2 * (scale/8), 2 * (scale/8)]);
-        ctx.moveTo(targetWidth / 2, 0);
-        ctx.lineTo(targetWidth / 2, targetHeight);
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.2)';
-        ctx.lineWidth = Math.max(1, scale / 8);
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
+      // Центр
+      ctx.beginPath();
+      ctx.setLineDash([5, 5]);
+      ctx.moveTo(targetWidth / 2, 0);
+      ctx.lineTo(targetWidth / 2, targetHeight);
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
-  };
 
-  const renderPreview = useCallback(() => {
-    if (canvasRef.current) {
-      // Для превью используем масштаб 8 (достаточно для экрана) и включаем линии
-      drawCanvasContent(canvasRef.current, 8, true);
-    }
   }, [crop, activeSpecs, isImgLoaded]);
 
   useEffect(() => {
-    if (isImgLoaded) renderPreview();
-  }, [renderPreview, isImgLoaded]);
+    requestAnimationFrame(renderPreview);
+  }, [renderPreview]);
 
+
+  // ==========================================
+  // 2. ФУНКЦИЯ СОХРАНЕНИЯ В ФАЙЛ (EXPORT)
+  // ==========================================
+  // ЭТОТ КОД ПОЛНОСТЬЮ ИЗОЛИРОВАН. Сюда НЕВОЗМОЖНО добавить линии случайно.
   const downloadResult = () => {
-    // Для скачивания создаем временный канвас
+    const img = imgRef.current;
+    if (!img) return;
+
     const offCanvas = document.createElement('canvas');
-    // Используем масштаб 32 (около 800 DPI) и ОТКЛЮЧАЕМ линии (false)
-    drawCanvasContent(offCanvas, 32, false);
+    const ctx = offCanvas.getContext('2d');
+    if (!ctx) return;
+
+    // МАСШТАБ ЭКСПОРТА (КАЧЕСТВО)
+    // 32 пикселя на 1 мм = ~800+ DPI. Это очень высокое качество.
+    const EXPORT_SCALE = 32;
+
+    const targetWidth = activeSpecs.widthMm * EXPORT_SCALE;
+    const targetHeight = activeSpecs.heightMm * EXPORT_SCALE;
+
+    offCanvas.width = targetWidth;
+    offCanvas.height = targetHeight;
+
+    // Белый фон (критично для JPEG)
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+    if (activeSpecs.isGrayscale) ctx.filter = 'grayscale(100%)';
+
+    // Расчет координат (копия логики из превью, но без рисовки)
+    const targetAspectRatio = activeSpecs.widthMm / activeSpecs.heightMm;
+    const sHeight = img.height / crop.scale;
+    const sWidth = sHeight * targetAspectRatio;
+    const sx = (img.width * (crop.x / 100)) - (sWidth / 2);
+    const sy = (img.height * (crop.y / 100)) - (sHeight / 2);
+
+    // Рисуем изображение с максимальным сглаживанием
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
     
+    ctx.filter = 'none';
+
+    // Рисуем уголок (он нужен на фото)
+    if (activeSpecs.cornerSide) {
+        const cornerSize = targetWidth * 0.28;
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        if (activeSpecs.cornerSide === 'left') {
+          ctx.moveTo(0, targetHeight - cornerSize);
+          ctx.quadraticCurveTo(cornerSize, targetHeight - cornerSize, cornerSize, targetHeight);
+          ctx.lineTo(0, targetHeight);
+        } else {
+          ctx.moveTo(targetWidth, targetHeight - cornerSize);
+          ctx.quadraticCurveTo(targetWidth - cornerSize, targetHeight - cornerSize, targetWidth - cornerSize, targetHeight);
+          ctx.lineTo(targetWidth, targetHeight);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // !!! В ЭТОЙ ФУНКЦИИ НЕТ КОДА ДЛЯ РИСОВАНИЯ ЛИНИЙ !!!
+
+    // Сохранение
     const link = document.createElement('a');
-    link.download = `photo_${activeSpecs.id}.jpg`;
-    // Сохраняем в JPEG с максимальным качеством (1.0)
-    link.href = offCanvas.toDataURL('image/jpeg', 1.0);
+    link.download = `photo_${activeSpecs.id}_${Date.now()}.jpg`;
+    // Качество 1.0 (максимум), формат JPEG
+    link.href = offCanvas.toDataURL('image/jpeg', 1.0); 
+    document.body.appendChild(link);
     link.click();
-    
-    // offCanvas будет удален сборщиком мусора
+    document.body.removeChild(link);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
       <div className={`w-full max-w-5xl rounded-3xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[90vh] ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}`}>
         
-        {/* Рабочая область с канвасом */}
+        {/* Рабочая область */}
         <div className="flex-grow p-6 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-950/50 relative overflow-hidden">
           <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors z-10">
             <X size={24} />
@@ -227,7 +282,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
                 />
               </div>
 
-              {/* ТОЧНАЯ РЕГУЛИРОВКА - Всегда видна под фото */}
+              {/* Управление */}
               <div className="flex flex-wrap justify-center gap-4 w-full max-w-md">
                 <div className={`p-2 rounded-2xl flex items-center gap-2 border shadow-sm ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
                    <button onClick={() => move(0, -0.5)} className="p-2 hover:bg-blue-600 hover:text-white rounded-xl transition-all"><ChevronUp size={20} /></button>
@@ -306,10 +361,10 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode }) => {
               className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-tighter shadow-xl shadow-blue-500/20 hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center space-x-2"
             >
               <Check size={20} />
-              <span>Сохранить результат</span>
+              <span>Сохранить JPG (HQ)</span>
             </button>
             <p className="text-[10px] text-center text-slate-400 font-bold">
-               Размер файла будет соответствовать 800 DPI
+               Размер файла: ~800 DPI (Максимальное качество)
             </p>
           </div>
         </div>

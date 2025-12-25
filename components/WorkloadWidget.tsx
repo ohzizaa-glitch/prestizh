@@ -64,7 +64,7 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
         
         {/* Боковая панель управления */}
         <div className="flex flex-col gap-4 w-full lg:w-72 flex-shrink-0">
-          <div className={`p-6 rounded-2xl border flex flex-col gap-1 transition-all shadow-inner ${isDarkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-200 text-slate-900'}`}>
+          <div className={`p-6 rounded-2xl border flex flex-col gap-1 transition-all shadow-inner ${isDarkMode ? 'bg-slate-900/50 border-slate-700 text-slate-100' : 'bg-slate-50 border-slate-200 text-slate-900'}`}>
             <div className="flex items-center gap-2 mb-1">
               <Clock size={16} className="text-blue-500" />
               <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Активных заказов</p>

@@ -132,7 +132,7 @@ const EarningsModal: React.FC<EarningsModalProps> = ({ orders, onClose, isDarkMo
                             <span>{stat.card}</span>
                           </div>
                        </div>
-                       <div className="text-xl font-black text-blue-600 min-w-[80px] text-right tracking-tighter">
+                       <div className={`text-xl font-black min-w-[80px] text-right tracking-tighter ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
                           {stat.total} ₽
                        </div>
                     </div>

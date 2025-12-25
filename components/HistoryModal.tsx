@@ -231,7 +231,7 @@ const HistoryModal: React.FC<HistoryModalProps> = ({
                       </div>
                     </div>
                     <div className="text-right">
-                       <div className="text-xl font-bold text-blue-600 tracking-tighter">{order.totalAmount} ₽</div>
+                       <div className={`text-xl font-bold tracking-tighter ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>{order.totalAmount} ₽</div>
                        {order.receiptNumber && (
                           <div className="text-[10px] font-black text-red-600 mt-1 uppercase tracking-widest">Квитанция №{order.receiptNumber}</div>
                        )}
