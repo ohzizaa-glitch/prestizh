@@ -1,11 +1,11 @@
 
-import React, { useEffect, useState, useRef } from 'react';
-import { Users, Clock, Plus, Zap, CheckCircle2, Timer, AlertCircle, PlusCircle, MinusCircle, Play, Trash2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Users, Clock, Zap, CheckCircle2, PlusCircle, MinusCircle, Play, Trash2 } from 'lucide-react';
 
 export interface ActiveClient {
   id: string;
   type: 'regular' | 'urgent';
-  remainingMs: number;
+  finishTime: number; // Время окончания в ms (Unix timestamp)
   totalDurationMs: number;
   label: string;
 }
@@ -14,7 +14,7 @@ interface WorkloadWidgetProps {
   clients: ActiveClient[];
   onAddClient: (type: 'regular' | 'urgent') => void;
   onRemoveClient: (id: string) => void;
-  onUpdateClientTime: (id: string, deltaMs: number) => void;
+  onAddMinutes: (id: string, minutes: number) => void;
   onClearAll: () => void;
   isDarkMode: boolean;
 }
@@ -23,35 +23,26 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
   clients, 
   onAddClient, 
   onRemoveClient, 
-  onUpdateClientTime,
+  onAddMinutes,
   onClearAll, 
   isDarkMode 
 }) => {
-  const lastTickRef = useRef(Date.now());
+  // Локальное состояние для обновления интерфейса каждую секунду
+  // Мы не меняем глобальный стейт, только перерисовываем UI
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    lastTickRef.current = Date.now();
-    
     const interval = setInterval(() => {
-      const now = Date.now();
-      const delta = now - lastTickRef.current;
-      lastTickRef.current = now;
-
-      // Тикаем у всех активных клиентов
-      if (clients && clients.length > 0) {
-        clients.forEach(client => {
-          if (client.remainingMs > 0) {
-            onUpdateClientTime(client.id, -delta);
-          }
-        });
-      }
+      setNow(Date.now());
     }, 1000);
-
     return () => clearInterval(interval);
-  }, [clients, onUpdateClientTime]); 
+  }, []);
 
-  const formatTime = (ms: number) => {
-    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const formatTime = (finishTime: number) => {
+    const remaining = finishTime - now;
+    if (remaining <= 0) return "ГОТОВО";
+
+    const totalSeconds = Math.floor(remaining / 1000);
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -122,8 +113,15 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
               </div>
             ) : (
               clients.map((client, index) => {
-                const isOverdue = client.remainingMs <= 0;
-                const progress = (client.remainingMs / client.totalDurationMs) * 100;
+                const remaining = client.finishTime - now;
+                const isOverdue = remaining <= 0;
+                
+                // Прогресс бар (обратный, уменьшается со временем)
+                // (Остаток / Всего) * 100
+                const progress = Math.max(0, Math.min(100, (remaining / client.totalDurationMs) * 100));
+                
+                // Если просрочено, прогресс бар полный (100%) но другого цвета, либо 0. 
+                // Сделаем 0 чтобы исчез.
                 
                 return (
                   <div 
@@ -138,7 +136,7 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
                     {!isOverdue && (
                       <div 
                         className={`absolute bottom-0 left-0 h-1 transition-all duration-1000 ${client.type === 'urgent' ? 'bg-orange-500' : 'bg-blue-500'}`}
-                        style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+                        style={{ width: `${progress}%` }}
                       />
                     )}
 
@@ -153,7 +151,7 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
                           </span>
                         </div>
                         <div className={`text-4xl font-black tabular-nums tracking-tighter ${isOverdue ? 'text-emerald-500' : (isDarkMode ? 'text-white' : 'text-slate-900')}`}>
-                          {isOverdue ? "ГОТОВО" : formatTime(client.remainingMs)}
+                          {formatTime(client.finishTime)}
                         </div>
                       </div>
 
@@ -171,13 +169,13 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
 
                     <div className="flex items-center gap-2">
                        <button 
-                          onClick={() => onUpdateClientTime(client.id, -60000)}
+                          onClick={() => onAddMinutes(client.id, -1)}
                           className={`flex-1 py-1.5 rounded-xl border flex items-center justify-center transition-all ${isDarkMode ? 'border-slate-700 bg-slate-800 text-slate-500 hover:text-white' : 'border-slate-200 bg-white text-slate-400 hover:text-slate-900'}`}
                        >
                          <MinusCircle size={14} />
                        </button>
                        <button 
-                          onClick={() => onUpdateClientTime(client.id, 60000)}
+                          onClick={() => onAddMinutes(client.id, 1)}
                           className={`flex-1 py-1.5 rounded-xl border flex items-center justify-center transition-all ${isDarkMode ? 'border-slate-700 bg-slate-800 text-slate-500 hover:text-white' : 'border-slate-200 bg-white text-slate-400 hover:text-slate-900'}`}
                        >
                          <PlusCircle size={14} />

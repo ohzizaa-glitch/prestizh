@@ -26,10 +26,13 @@ export default function App() {
     return localStorage.getItem('prestige_theme') === 'dark';
   });
   
-  // 2. Инициализация очереди клиентов сразу из памяти (защита от сброса)
-  const [clients, setClients] = useState<ActiveClient[]>(() => {
+  // 2. Инициализация очереди клиентов
+  const [clients, setClientsState] = useState<ActiveClient[]>(() => {
     try {
       const saved = localStorage.getItem('prestige_clients_queue');
+      // Миграция старых данных (если там был remainingMs, он мог устареть)
+      // Лучше сбросить, если структура не совпадает, или просто принять как есть
+      // В новой версии мы используем finishTime.
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
       console.error('Ошибка загрузки очереди:', e);
@@ -37,13 +40,58 @@ export default function App() {
     }
   });
 
-  // 3. Инициализация ИСТОРИИ ЗАКАЗОВ сразу из памяти (КРИТИЧНО ДЛЯ СОХРАНЕНИЯ ОПЛАТ)
+  // Канал для синхронизации между вкладками
+  const syncChannel = useMemo(() => new BroadcastChannel('prestige_sync_channel'), []);
+
+  // Обертка для изменения клиентов с синхронизацией
+  const setClients = (newClientsOrUpdater: ActiveClient[] | ((prev: ActiveClient[]) => ActiveClient[])) => {
+    setClientsState(prev => {
+      const updated = typeof newClientsOrUpdater === 'function' ? newClientsOrUpdater(prev) : newClientsOrUpdater;
+      
+      // Сохраняем и уведомляем другие вкладки
+      localStorage.setItem('prestige_clients_queue', JSON.stringify(updated));
+      syncChannel.postMessage({ type: 'SYNC_CLIENTS', payload: updated });
+      
+      return updated;
+    });
+  };
+
+  // Слушаем изменения из других вкладок (BroadcastChannel + Storage Event)
+  useEffect(() => {
+    // 1. Обработка сообщений от BroadcastChannel (быстрая синхронизация)
+    syncChannel.onmessage = (event) => {
+      if (event.data && event.data.type === 'SYNC_CLIENTS') {
+        setClientsState(event.data.payload);
+      }
+    };
+
+    // 2. Обработка события storage (для надежности)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'prestige_clients_queue' && e.newValue) {
+        try {
+          const newQueue = JSON.parse(e.newValue);
+          setClientsState(newQueue);
+        } catch (err) {
+          console.error('Ошибка синхронизации localStorage:', err);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      syncChannel.close();
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, [syncChannel]);
+
+
+  // 3. Инициализация ИСТОРИИ ЗАКАЗОВ сразу из памяти
   const [orderHistory, setOrderHistory] = useState<Order[]>(() => {
     try {
       const saved = localStorage.getItem('prestige_order_history');
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
-      console.error('Ошибка загрузки истории:', e);
       return [];
     }
   });
@@ -54,14 +102,10 @@ export default function App() {
     return saved ? parseInt(saved) : 554;
   });
 
-  // --- ЭФФЕКТЫ АВТОМАТИЧЕСКОГО СОХРАНЕНИЯ ---
+  // --- ЭФФЕКТЫ АВТОМАТИЧЕСКОГО СОХРАНЕНИЯ (Только локально, т.к. setClients уже пишет в LS) ---
+  // Убрали useEffect для clients, так как сохранение перенесено в setClients
   
-  // Сохраняем очередь при ЛЮБОМ изменении
-  useEffect(() => {
-    localStorage.setItem('prestige_clients_queue', JSON.stringify(clients));
-  }, [clients]);
-
-  // Сохраняем историю при ЛЮБОМ изменении (гарантия сохранности оплат)
+  // Сохраняем историю при ЛЮБОМ изменении
   useEffect(() => {
     localStorage.setItem('prestige_order_history', JSON.stringify(orderHistory));
   }, [orderHistory]);
@@ -83,22 +127,30 @@ export default function App() {
 
   const handleAddClient = (type: 'regular' | 'urgent') => {
     setClients(prev => {
-      const maxRemainingMs = prev.reduce((max, c) => Math.max(max, c.remainingMs), 0);
-      let initialDurationMs = 0;
+      // Ищем самое позднее время окончания среди текущих клиентов
+      const maxFinishTime = prev.reduce((max, c) => Math.max(max, c.finishTime), Date.now());
       
-      if (prev.length === 0) {
-        initialDurationMs = type === 'regular' ? 15 * 60000 : 20 * 60000;
+      // Определяем длительность в мс
+      let durationMs = 0;
+      if (prev.length === 0 || maxFinishTime <= Date.now()) {
+        // Если очередь пуста или все заказы уже просрочены, начинаем от "сейчас"
+        durationMs = type === 'regular' ? 15 * 60000 : 20 * 60000;
       } else {
-        const addMs = type === 'regular' ? 10 * 60000 : 15 * 60000;
-        initialDurationMs = maxRemainingMs + addMs;
+        // Иначе добавляем ко времени окончания последнего заказа
+        const addMinutes = type === 'regular' ? 10 : 15;
+        durationMs = addMinutes * 60000;
       }
+
+      // Вычисляем время старта (либо сейчас, либо когда освободится последний)
+      const startTime = Math.max(Date.now(), maxFinishTime);
+      const finishTime = startTime + durationMs;
 
       const newClient: ActiveClient = {
         id: Math.random().toString(36).substr(2, 9),
         type,
-        remainingMs: initialDurationMs,
-        totalDurationMs: initialDurationMs,
-        label: type === 'regular' ? `Клиент` : `ТЯЖЕЛЫЙ`
+        finishTime: finishTime,
+        totalDurationMs: durationMs, // Храним чисто для расчета прогрессбара
+        label: type === 'regular' ? `Клиент` : `Тяжелый`
       };
       return [...prev, newClient];
     });
@@ -108,17 +160,14 @@ export default function App() {
     setClients(prev => prev.filter(c => c.id !== id));
   };
 
-  const handleUpdateClientTime = useCallback((id: string, deltaMs: number) => {
+  // Добавить/убавить минуты у конкретного клиента (сдвигает финиш)
+  const handleAddMinutes = (id: string, minutes: number) => {
     setClients(prev => prev.map(c => 
       c.id === id 
-        ? { 
-            ...c, 
-            remainingMs: Math.max(0, c.remainingMs + deltaMs),
-            totalDurationMs: deltaMs > 0 ? c.totalDurationMs + deltaMs : c.totalDurationMs 
-          } 
+        ? { ...c, finishTime: c.finishTime + (minutes * 60000) } 
         : c
     ));
-  }, []);
+  };
 
   const handleClearQueue = () => {
     setClients([]);
@@ -226,12 +275,10 @@ export default function App() {
   };
 
   const handleImportHistory = (importedOrders: Order[]) => {
-    // Объединяем существующую историю с импортированной, избегая дубликатов по ID
     setOrderHistory(prev => {
       const existingIds = new Set(prev.map(o => o.id));
       const newOrders = importedOrders.filter(o => !existingIds.has(o.id));
       const merged = [...newOrders, ...prev];
-      // Сортируем по дате (новые сверху)
       return merged.sort((a, b) => b.timestamp - a.timestamp);
     });
     showToast(`Импортировано ${importedOrders.length} заказов`);
@@ -310,10 +357,9 @@ export default function App() {
        timestamp: Date.now(),
        items: orderItems,
        totalAmount: totalPrice,
-       paymentMethod // Здесь сохраняется метод оплаты (cash/card)
+       paymentMethod 
     };
 
-    // Обновляем историю через функциональное обновление, чтобы не потерять предыдущие данные
     setOrderHistory(prev => [newOrder, ...prev]);
 
     if (hasDigitalItems) {
@@ -432,7 +478,7 @@ export default function App() {
             clients={clients} 
             onAddClient={handleAddClient}
             onRemoveClient={handleRemoveClient}
-            onUpdateClientTime={handleUpdateClientTime}
+            onAddMinutes={handleAddMinutes}
             onClearAll={handleClearQueue}
             isDarkMode={isDarkMode} 
           />
