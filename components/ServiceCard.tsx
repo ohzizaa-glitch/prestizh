@@ -67,17 +67,17 @@ const ServiceCard: React.FC<ServiceCardProps> = ({
                   <div className="mt-1">
                     {item.isPriceEditable ? (
                       <div className="flex items-center space-x-2">
-                        <div className="relative">
+                        <div className="relative group/price">
                           <input
                             type="number"
                             value={customPrices[item.id] || ''}
                             onChange={(e) => onPriceChange(item.id, parseInt(e.target.value) || 0)}
-                            placeholder="Цена..."
-                            className={`w-24 font-black text-sm px-2 py-1 rounded transition-all outline-none focus:ring-2 ${isDarkMode ? 'bg-slate-700 border-slate-600 text-blue-400 focus:ring-blue-900 placeholder:text-slate-500' : 'bg-blue-50 border-blue-100 text-blue-700 focus:ring-blue-200 placeholder:text-blue-300'}`}
+                            placeholder="Цена"
+                            className={`w-24 font-black text-sm pl-2 pr-5 py-1.5 rounded-lg transition-all outline-none border ${isDarkMode ? 'bg-slate-700 border-slate-600 text-blue-400 focus:border-blue-500 placeholder:text-slate-600' : 'bg-blue-50 border-blue-100 text-blue-700 focus:border-blue-400 placeholder:text-blue-200'}`}
                           />
-                          <Pencil size={10} className={`absolute right-1 top-1 ${isDarkMode ? 'text-slate-500' : 'text-blue-300'}`} />
+                          <Pencil size={12} className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity opacity-50 group-hover/price:opacity-100 ${isDarkMode ? 'text-slate-500' : 'text-blue-400'}`} />
                         </div>
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">₽ {item.unit && `/ ${item.unit}`}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{item.unit ? `/ ${item.unit}` : '₽'}</span>
                       </div>
                     ) : (
                       <div className="text-sm font-medium text-slate-500">

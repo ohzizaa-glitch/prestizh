@@ -23,7 +23,38 @@
       body {
         font-family: 'Inter', sans-serif;
       }
-      /* Скрыть полосу прокрутки для горизонтального меню */
+      
+      /* Custom Scrollbar Styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      
+      /* Light Mode Scrollbar */
+      ::-webkit-scrollbar-track {
+        background: #f1f5f9; /* slate-100 */
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #cbd5e1; /* slate-300 */
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8; /* slate-400 */
+      }
+
+      /* Dark Mode Scrollbar */
+      .dark ::-webkit-scrollbar-track {
+        background: #0f172a; /* slate-900 */
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #334155; /* slate-700 */
+        border-radius: 4px;
+      }
+      .dark ::-webkit-scrollbar-thumb:hover {
+        background: #475569; /* slate-600 */
+      }
+
+      /* Utility to hide scrollbar but keep functionality if strictly needed */
       .no-scrollbar::-webkit-scrollbar {
         display: none;
       }
@@ -31,8 +62,15 @@
         -ms-overflow-style: none;  /* IE and Edge */
         scrollbar-width: none;  /* Firefox */
       }
+      
       html {
         scroll-behavior: smooth;
+      }
+
+      /* Print Optimization */
+      @media print {
+        @page { margin: 0; }
+        body { -webkit-print-color-adjust: exact; }
       }
     </style>
   <script type="importmap">

@@ -15,206 +15,192 @@ interface TodoListModalProps {
 }
 
 const TodoListModal: React.FC<TodoListModalProps> = ({ onClose, isDarkMode }) => {
-  const [tasks, setTasks] = useState<TodoTask[]>(() => {
-    try {
-      const saved = localStorage.getItem('prestige_todo_list');
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  });
-
+  const [tasks, setTasks] = useState<TodoTask[]>([]);
   const [inputStart, setInputStart] = useState('');
   const [inputEnd, setInputEnd] = useState('');
 
+  // Загрузка данных
   useEffect(() => {
-    localStorage.setItem('prestige_todo_list', JSON.stringify(tasks));
-  }, [tasks]);
-
-  const addTask = (section: 'start' | 'end', text: string) => {
-    if (!text.trim()) return;
-    const newTask: TodoTask = {
-      id: Date.now().toString() + Math.random(),
-      text: text.trim(),
-      completed: false,
-      section
-    };
-    setTasks(prev => [...prev, newTask]);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent, section: 'start' | 'end') => {
-    if (e.key === 'Enter') {
-      if (section === 'start') {
-        addTask('start', inputStart);
-        setInputStart('');
-      } else {
-        addTask('end', inputEnd);
-        setInputEnd('');
+    const saved = localStorage.getItem('prestige_todo_list_v2');
+    if (saved) {
+      try {
+        setTasks(JSON.parse(saved));
+      } catch (e) {
+        setTasks([]);
       }
     }
+  }, []);
+
+  // Сохранение данных
+  useEffect(() => {
+    localStorage.setItem('prestige_todo_list_v2', JSON.stringify(tasks));
+  }, [tasks]);
+
+  // Добавление задачи
+  const handleAdd = (section: 'start' | 'end') => {
+    const val = section === 'start' ? inputStart : inputEnd;
+    if (!val.trim()) return;
+
+    const newTask: TodoTask = {
+      id: Date.now().toString() + Math.random().toString(36).substring(2),
+      text: val.trim(),
+      completed: false,
+      section: section
+    };
+
+    setTasks(prev => [...prev, newTask]);
+    if (section === 'start') setInputStart('');
+    else setInputEnd('');
   };
 
-  const toggleTask = (id: string) => {
+  // Удаление задачи (БЕЗ подтверждения для гарантии работы)
+  const handleDelete = (id: string) => {
+    setTasks(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Переключение статуса
+  const handleToggle = (id: string) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
   };
 
-  const deleteTask = (id: string) => {
-    if (confirm('Удалить этот пункт навсегда?')) {
-      setTasks(prev => prev.filter(t => t.id !== id));
-    }
+  // Сброс смены (БЕЗ подтверждения для гарантии работы)
+  const handleReset = () => {
+    setTasks(prev => prev.map(t => ({ ...t, completed: false })));
   };
 
-  const resetDaily = () => {
-    if (confirm('Сбросить выполнение всех задач? (Список останется, галочки снимутся)')) {
-      setTasks(prev => prev.map(t => ({ ...t, completed: false })));
-    }
-  };
-
-  const renderSection = (title: string, section: 'start' | 'end', inputValue: string, setInput: (v: string) => void, icon: React.ReactNode) => {
-    const sectionTasks = tasks.filter(t => t.section === section);
-    const completedCount = sectionTasks.filter(t => t.completed).length;
-    const totalCount = sectionTasks.length;
-    const progress = totalCount === 0 ? 0 : (completedCount / totalCount) * 100;
+  const renderSection = (title: string, section: 'start' | 'end', icon: React.ReactNode) => {
+    const currentTasks = tasks.filter(t => t.section === section);
+    const inputValue = section === 'start' ? inputStart : inputEnd;
+    const setInputValue = section === 'start' ? setInputStart : setInputEnd;
 
     return (
-      <div className={`flex-1 flex flex-col rounded-2xl border overflow-hidden ${isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-        {/* Section Header */}
-        <div className={`p-4 border-b flex items-center justify-between ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-100 bg-slate-50'}`}>
-           <div className="flex items-center gap-2">
-             {icon}
-             <h3 className={`font-black uppercase tracking-tight text-sm ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{title}</h3>
-           </div>
-           <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-600'}`}>
-             {completedCount} / {totalCount}
-           </span>
-        </div>
-        
-        {/* Progress Bar */}
-        <div className="h-1 w-full bg-slate-200 dark:bg-slate-700">
-           <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${progress}%` }}></div>
+      <div className={`flex-1 flex flex-col rounded-3xl border overflow-hidden ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+        <div className={`p-4 border-b flex items-center justify-between ${isDarkMode ? 'bg-slate-900/50 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+          <div className="flex items-center gap-2">
+            {icon}
+            <span className={`font-black uppercase text-xs tracking-widest ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>{title}</span>
+          </div>
+          <span className="text-[10px] font-black bg-blue-600 text-white px-2 py-0.5 rounded-full">
+            {currentTasks.filter(t => t.completed).length} / {currentTasks.length}
+          </span>
         </div>
 
-        {/* List */}
-        <div className="flex-grow overflow-y-auto p-2 space-y-2 min-h-[200px] max-h-[400px] custom-scrollbar">
-          {sectionTasks.length === 0 ? (
-            <div className="h-32 flex flex-col items-center justify-center text-slate-400 opacity-50">
-               <p className="text-xs font-bold uppercase">Список пуст</p>
+        <div className="flex-grow overflow-y-auto p-4 space-y-3 min-h-[300px] max-h-[450px] custom-scrollbar">
+          {currentTasks.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center opacity-20 py-10">
+              <p className="text-xs font-bold uppercase">Список пуст</p>
             </div>
           ) : (
-            sectionTasks.map(task => (
+            currentTasks.map(task => (
               <div 
                 key={task.id} 
-                className={`group flex items-center gap-3 p-3 rounded-xl transition-all border ${
-                  task.completed 
-                    ? (isDarkMode ? 'bg-emerald-900/10 border-emerald-900/30' : 'bg-emerald-50 border-emerald-100') 
-                    : (isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-slate-600' : 'bg-white border-slate-100 hover:border-blue-200')
-                }`}
+                className={`flex items-center gap-2 transition-all`}
               >
-                <button 
-                  onClick={() => toggleTask(task.id)}
-                  className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+                {/* Кнопка переключения (Основная часть) */}
+                <button
+                  type="button"
+                  onClick={() => handleToggle(task.id)}
+                  className={`flex-grow flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all ${
                     task.completed 
-                      ? 'bg-emerald-500 border-emerald-500 text-white' 
-                      : (isDarkMode ? 'border-slate-600 hover:border-blue-400' : 'border-slate-300 hover:border-blue-400')
+                    ? (isDarkMode ? 'bg-emerald-900/20 border-emerald-500/50 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-700')
+                    : (isDarkMode ? 'bg-slate-700 border-slate-600 text-slate-200 hover:border-blue-500' : 'bg-white border-slate-100 text-slate-700 hover:border-blue-400 shadow-sm')
                   }`}
                 >
-                  {task.completed && <Check size={14} strokeWidth={4} />}
+                  <div className={`w-5 h-5 rounded flex items-center justify-center border-2 flex-shrink-0 ${task.completed ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-400'}`}>
+                    {task.completed && <Check size={12} strokeWidth={4} />}
+                  </div>
+                  <span className={`text-sm font-bold ${task.completed ? 'line-through opacity-50' : ''}`}>
+                    {task.text}
+                  </span>
                 </button>
-                
-                <span className={`flex-grow text-sm font-medium transition-all ${
-                  task.completed 
-                    ? 'text-emerald-600/70 dark:text-emerald-400/50 line-through decoration-2' 
-                    : (isDarkMode ? 'text-slate-200' : 'text-slate-700')
-                }`}>
-                  {task.text}
-                </span>
 
-                <button 
-                  onClick={() => deleteTask(task.id)}
-                  className="opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-red-500 transition-all"
-                  title="Удалить пункт"
+                {/* Кнопка удаления (Абсолютно независимая) */}
+                <button
+                  type="button"
+                  onClick={() => handleDelete(task.id)}
+                  className={`p-3 rounded-2xl transition-colors flex-shrink-0 ${
+                    isDarkMode ? 'bg-slate-700 text-slate-400 hover:bg-red-900/40 hover:text-red-400' : 'bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500'
+                  }`}
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={18} />
                 </button>
               </div>
             ))
           )}
         </div>
 
-        {/* Input Area */}
-        <div className={`p-3 border-t ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-100 bg-slate-50'}`}>
-           <div className="relative">
-             <input 
-               type="text" 
-               value={inputValue}
-               onChange={(e) => setInput(e.target.value)}
-               onKeyDown={(e) => handleKeyDown(e, section)}
-               placeholder="Добавить задачу..."
-               className={`w-full pl-3 pr-10 py-2.5 rounded-xl text-sm font-bold outline-none border-2 transition-all ${isDarkMode ? 'bg-slate-900 border-slate-700 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-800 focus:border-blue-500'}`}
-             />
-             <button 
-               onClick={() => {
-                 if (section === 'start') { addTask('start', inputStart); setInputStart(''); }
-                 else { addTask('end', inputEnd); setInputEnd(''); }
-               }}
-               className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-             >
-               <Plus size={16} />
-             </button>
-           </div>
+        <div className={`p-4 border-t ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-slate-50 border-slate-100'}`}>
+          <form 
+            onSubmit={(e) => { e.preventDefault(); handleAdd(section); }}
+            className="flex gap-2"
+          >
+            <input 
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Что нужно сделать?"
+              className={`flex-grow px-4 py-3 rounded-xl text-sm font-bold outline-none border-2 transition-all ${
+                isDarkMode ? 'bg-slate-800 border-slate-700 text-white focus:border-blue-500' : 'bg-white border-slate-200 text-slate-800 focus:border-blue-500'
+              }`}
+            />
+            <button 
+              type="submit"
+              disabled={!inputValue.trim()}
+              className="px-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            >
+              <Plus size={24} />
+            </button>
+          </form>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className={`w-full max-w-5xl rounded-2xl shadow-2xl flex flex-col h-[85vh] transition-colors ${isDarkMode ? 'bg-slate-900 border border-slate-700' : 'bg-white border border-slate-200'}`}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-300">
+      <div className={`w-full max-w-5xl rounded-[2.5rem] shadow-2xl flex flex-col h-[85vh] overflow-hidden ${isDarkMode ? 'bg-slate-900' : 'bg-white'}`}>
         
-        {/* Header */}
-        <div className={`p-5 border-b flex justify-between items-center rounded-t-2xl flex-shrink-0 ${isDarkMode ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-100'}`}>
-          <div className="flex items-center space-x-3">
-            <div className={`p-2 rounded-full ${isDarkMode ? 'bg-violet-900/30 text-violet-400' : 'bg-violet-100 text-violet-600'}`}>
-              <CheckSquare size={20} />
+        <div className={`p-6 border-b flex justify-between items-center ${isDarkMode ? 'border-slate-800' : 'border-slate-100'}`}>
+          <div className="flex items-center gap-4">
+            <div className="bg-blue-600 text-white p-3 rounded-2xl shadow-xl shadow-blue-500/30">
+              <CheckSquare size={28} />
             </div>
-            <h2 className={`font-bold text-xl ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Список дел (Чек-лист)</h2>
+            <div>
+              <h2 className={`text-2xl font-black uppercase tracking-tighter ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Чек-лист смены</h2>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Контроль процессов</p>
+            </div>
           </div>
-          
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-3">
             <button 
-              onClick={resetDaily}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all border ${isDarkMode ? 'border-slate-700 text-slate-400 hover:text-blue-400 hover:border-blue-400' : 'border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-600'}`}
-              title="Снять все галочки"
+              type="button"
+              onClick={handleReset}
+              className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border-2 ${
+                isDarkMode 
+                ? 'border-slate-700 text-slate-300 hover:border-orange-500 hover:text-orange-400 hover:bg-orange-500/10' 
+                : 'border-slate-200 text-slate-600 hover:border-orange-500 hover:text-orange-600 hover:bg-orange-50'
+              }`}
             >
-              <RotateCcw size={14} />
+              <RotateCcw size={16} />
               <span className="hidden sm:inline">Новая смена</span>
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
-              <X size={24} />
+            <button 
+              type="button"
+              onClick={onClose}
+              className={`p-3 rounded-full transition-colors ${isDarkMode ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}
+            >
+              <X size={28} />
             </button>
           </div>
         </div>
 
-        {/* Content - Two Columns */}
-        <div className={`flex-grow overflow-y-auto p-4 sm:p-6 ${isDarkMode ? 'bg-slate-950/30' : 'bg-slate-50/50'}`}>
-           <div className="flex flex-col md:flex-row gap-6 h-full">
-              {renderSection(
-                'Начало смены', 
-                'start', 
-                inputStart, 
-                setInputStart, 
-                <Sun size={18} className="text-orange-500" />
-              )}
-              {renderSection(
-                'Конец смены', 
-                'end', 
-                inputEnd, 
-                setInputEnd, 
-                <MoonIcon size={18} className="text-blue-500" />
-              )}
-           </div>
+        <div className={`flex-grow p-4 md:p-8 overflow-hidden ${isDarkMode ? 'bg-slate-950/40' : 'bg-slate-50'}`}>
+          <div className="flex flex-col md:flex-row gap-8 h-full">
+            {renderSection('Открытие', 'start', <Sun className="text-orange-500" size={20}/>)}
+            {renderSection('Закрытие', 'end', <MoonIcon className="text-blue-500" size={20}/>)}
+          </div>
         </div>
-        
+
       </div>
     </div>
   );

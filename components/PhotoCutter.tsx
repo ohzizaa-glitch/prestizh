@@ -3,7 +3,7 @@
 // DO NOT MODIFY LOGIC WITHOUT EXPLICIT USER REQUEST.
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw, RotateCw, RotateCcw as RotateLeftIcon } from 'lucide-react';
+import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw, RotateCw, RotateCcw as RotateLeftIcon, Grid } from 'lucide-react';
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
 
 interface PhotoCutterProps {
@@ -20,6 +20,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
   
   // Состояние: x, y в процентах от размера ИЗОБРАЖЕНИЯ (50 = центр), scale (зум), rotation (градусы)
   const [crop, setCrop] = useState({ x: 50, y: 50, scale: 1, rotation: 0 });
+  const [showGrid, setShowGrid] = useState(false); // New: Grid state
   
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -61,9 +62,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
   };
 
   // Функция перемещения.
-  // dx, dy - смещение мыши.
-  // Мы меняем crop.x/crop.y. 
-  // crop.x - это точка на изображении (в %), которая должна быть в центре рамки.
   const move = (dx: number, dy: number) => {
     setCrop(prev => ({
       ...prev,
@@ -87,10 +85,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     const dx = e.clientX - dragStart.x;
     const dy = e.clientY - dragStart.y;
     
-    // Важно: при повороте оси X/Y визуально меняются, но crop.x/y привязаны к исходному изображению.
-    // Для простого использования оставляем движение по осям экрана, 
-    // но корректируем вектор движения в зависимости от угла поворота, чтобы "вверх" всегда было "вверх".
-    
+    // Корректируем вектор движения в зависимости от угла поворота
     const rad = -crop.rotation * Math.PI / 180;
     const rotDx = dx * Math.cos(rad) - dy * Math.sin(rad);
     const rotDy = dx * Math.sin(rad) + dy * Math.cos(rad);
@@ -102,15 +97,16 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
   const handleMouseUp = () => setIsDragging(false);
 
   // ==========================================
-  // УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ОТРИСОВКИ
+  // УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ОТРИСОВКИ (Optimized with useCallback)
   // ==========================================
-  const drawToCanvas = (
+  const drawToCanvas = useCallback((
     ctx: CanvasRenderingContext2D, 
     img: HTMLImageElement, 
     width: number, 
     height: number, 
     scaleFactor: number, // Множитель разрешения (10 для превью, 32 для экспорта)
-    drawGuides: boolean
+    drawGuides: boolean,
+    drawGrid: boolean
   ) => {
     // 1. Очистка и белый фон
     ctx.clearRect(0, 0, width, height);
@@ -124,64 +120,25 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     ctx.save();
 
     // 2. Трансформация координат
-    // Переносим начало координат в ЦЕНТР канваса (рамки)
     ctx.translate(width / 2, height / 2);
-    
-    // Вращаем пространство
     ctx.rotate((crop.rotation * Math.PI) / 180);
-    
-    // Масштабируем
     ctx.scale(crop.scale, crop.scale);
 
     // 3. Рисуем изображение
-    // Нам нужно нарисовать изображение так, чтобы точка (crop.x, crop.y) оказалась в (0,0) (центре канваса)
-    // crop.x - процент от ширины изображения (0..100)
-    
-    // Вычисляем смещение центра изображения относительно точки (0,0) текущей системы координат
-    // Если crop.x = 50%, смещение = 0.
-    // Если crop.x = 0%, нам нужно сдвинуть изображение вправо на 50% ширины.
-    
-    const imgCenterX = img.width / 2;
-    const imgCenterY = img.height / 2;
-    
-    // Смещение внутри изображения до точки crop
     const offsetX = (crop.x / 100) * img.width;
     const offsetY = (crop.y / 100) * img.height;
     
-    // Сдвигаем изображение так, чтобы точка offset оказалась в 0,0
-    const drawX = -offsetX;
-    const drawY = -offsetY;
-    
-    // Учитываем соотношение сторон и зум для рендеринга.
-    // В drawImage размеры задаются в исходных пикселях изображения.
-    // Но нам нужно подстроить размер изображения под "физические" размеры рамки.
-    
     // Базовый масштаб: чтобы картинка по высоте влезала в рамку (примерно) при scale=1
-    // Это эвристика для начального отображения.
-    const targetAspectRatio = activeSpecs.widthMm / activeSpecs.heightMm;
-    // const imgAspectRatio = img.width / img.height;
-    
-    // Вычисляем базовый коэффициент масштабирования, чтобы изображение заполнило рамку
-    // (логика cover: берем меньшую сторону)
-    // При scale=1 изображение должно примерно заполнять рамку
     const baseScale = Math.max(
       width / img.width,
       height / img.height
     );
 
-    // Применяем этот базовый масштаб к текущему контексту
     ctx.scale(baseScale, baseScale);
 
     // Рисуем с высоким качеством
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    
-    // Рисуем картинку
-    // Поскольку мы уже сделали translate/rotate/scale для контекста, просто рисуем картинку смещенную на offset
-    // Но нам нужно рисовать ВЕСЬ image, смещенный на (imgWidth * cropX/100).
-    // Поправка: при translate(width/2, height/2) мы в центре.
-    // Мы хотим, чтобы пиксель (cropX, cropY) был в (0,0).
-    // Значит левый верхний угол картинки должен быть в (-cropX, -cropY).
     
     ctx.drawImage(img, -offsetX, -offsetY);
 
@@ -206,7 +163,27 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
         ctx.fill();
     }
 
-    // 5. Линии разметки (только для превью)
+    // 5. Сетка (Grid) - Новая фича
+    if (drawGrid) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1 * scaleFactor * 0.5;
+        
+        // Трети
+        ctx.moveTo(width / 3, 0);
+        ctx.lineTo(width / 3, height);
+        ctx.moveTo(width * 2 / 3, 0);
+        ctx.lineTo(width * 2 / 3, height);
+        
+        ctx.moveTo(0, height / 3);
+        ctx.lineTo(width, height / 3);
+        ctx.moveTo(0, height * 2 / 3);
+        ctx.lineTo(width, height * 2 / 3);
+        
+        ctx.stroke();
+    }
+
+    // 6. Линии разметки биометрии (только для превью)
     if (drawGuides && activeSpecs.faceHeightMin > 0) {
       const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
         const yPx = yMm * scaleFactor;
@@ -240,7 +217,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
       ctx.stroke();
       ctx.setLineDash([]);
     }
-  };
+  }, [activeSpecs, crop]);
 
   // Рендеринг превью
   useEffect(() => {
@@ -258,9 +235,9 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
-    drawToCanvas(ctx, img, targetWidth, targetHeight, PREVIEW_SCALE, true);
+    drawToCanvas(ctx, img, targetWidth, targetHeight, PREVIEW_SCALE, true, showGrid);
 
-  }, [crop, activeSpecs, isImgLoaded]);
+  }, [crop, activeSpecs, isImgLoaded, showGrid, drawToCanvas]);
 
 
   // Сохранение
@@ -282,8 +259,8 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     offCanvas.width = targetWidth;
     offCanvas.height = targetHeight;
 
-    // Рисуем без линий разметки
-    drawToCanvas(ctx, img, targetWidth, targetHeight, EXPORT_SCALE, false);
+    // Рисуем без линий разметки и сетки
+    drawToCanvas(ctx, img, targetWidth, targetHeight, EXPORT_SCALE, false, false);
 
     // Генерация имени файла
     const sizeStr = `${activeSpecs.widthMm}x${activeSpecs.heightMm}`;
@@ -301,7 +278,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
       <div className={`w-full max-w-6xl rounded-3xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[95vh] ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}`}>
         
         {/* Рабочая область */}
@@ -354,12 +331,12 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
                     step="0.01" 
                     value={crop.scale} 
                     onChange={(e) => setCrop(prev => ({ ...prev, scale: parseFloat(e.target.value) }))}
-                    className="w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                    className="w-24 sm:w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                   />
                   <Maximize2 size={16} className="text-slate-400"/>
                 </div>
 
-                <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
 
                 {/* Rotation */}
                 <div className="flex items-center gap-2 px-2">
@@ -371,12 +348,20 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
                     step="0.5" 
                     value={crop.rotation} 
                     onChange={(e) => setCrop(prev => ({ ...prev, rotation: parseFloat(e.target.value) }))}
-                    className="w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                    className="w-24 sm:w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
                   />
                   <RotateCw size={16} className="text-slate-400" />
                 </div>
 
-                <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+                <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
+
+                <button 
+                  onClick={() => setShowGrid(!showGrid)}
+                  className={`p-2 rounded-xl transition-all ${showGrid ? 'bg-blue-600 text-white' : (isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100')}`}
+                  title="Сетка"
+                >
+                  <Grid size={20} />
+                </button>
 
                 <button 
                   onClick={() => setCrop({ x: 50, y: 50, scale: 1, rotation: 0 })}
@@ -392,7 +377,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
 
         {/* Панель настроек */}
         <div className={`w-full md:w-80 p-0 flex flex-col border-l z-20 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
-          <div className="p-6 border-b dark:border-slate-800 border-slate-100">
+          <div className="p-6 border-b dark:border-slate-800 border-slate-100 flex-shrink-0">
              <h3 className={`text-lg font-black uppercase tracking-tighter ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Формат</h3>
              {image && <p className="text-xs text-slate-500 font-bold mt-1 truncate" title={originalFilename}>Файл: {originalFilename}</p>}
           </div>
@@ -422,7 +407,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
             ))}
           </div>
 
-          <div className="p-6 border-t dark:border-slate-800 border-slate-100 space-y-3 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="p-6 border-t dark:border-slate-800 border-slate-100 space-y-3 bg-slate-50/50 dark:bg-slate-900/50 flex-shrink-0">
             <button 
               onClick={() => setImage(null)}
               className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${isDarkMode ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border text-slate-500 hover:text-slate-800'}`}
