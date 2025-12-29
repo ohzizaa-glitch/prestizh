@@ -1,3 +1,4 @@
+
 import { 
   Camera, 
   Scissors, 
@@ -153,6 +154,7 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     items: [
       { id: 'goods_frames', name: 'Рамки', price: 0, unit: 'шт', isPriceEditable: true },
       { id: 'goods_albums', name: 'Фотоальбомы', price: 0, unit: 'шт', isPriceEditable: true },
+      { id: 'goods_flash', name: 'Флеш-карта', price: 0, unit: 'шт', isPriceEditable: true },
       { id: 'goods_batteries', name: 'Батарейки', price: 0, unit: 'шт', isPriceEditable: true },
       { id: 'goods_multifora', name: 'Мультифора', price: 4, unit: 'шт' },
       { id: 'goods_bag', name: 'Пакет', price: 5, unit: 'шт' },

@@ -12,9 +12,10 @@ interface ReceiptProps {
   onClear: () => void;
   onSaveOrder: (paymentMethod: PaymentMethod) => void;
   isDarkMode: boolean;
+  getPrice?: (item: ServiceItem, qty: number, variantId?: string) => number;
 }
 
-const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onClose, onClear, onSaveOrder, isDarkMode }) => {
+const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onClose, onClear, onSaveOrder, isDarkMode, getPrice }) => {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [receivedAmount, setReceivedAmount] = useState<string>('');
 
@@ -41,7 +42,16 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onCl
 
       if (item) {
         const variant = variantId ? getVariantInfo(variantId) : undefined;
-        const actualPrice = item.isPriceEditable ? (customPrices[itemId] || 0) : item.price;
+        
+        let actualPrice: number;
+        // Если передана функция расчета цены (с учетом скидок), используем её
+        if (getPrice) {
+          actualPrice = getPrice(item, qty, variantId);
+        } else {
+          // Иначе старая логика (для совместимости)
+          actualPrice = item.isPriceEditable ? (customPrices[itemId] || 0) : item.price;
+        }
+
         results.push({
             originalItem: item,
             variant,
@@ -54,7 +64,7 @@ const Receipt: React.FC<ReceiptProps> = ({ items, quantities, customPrices, onCl
     });
 
     return results;
-  }, [items, quantities, customPrices]);
+  }, [items, quantities, customPrices, getPrice]);
 
   const total = cartItems.reduce((acc, item) => acc + item.subtotal, 0);
   

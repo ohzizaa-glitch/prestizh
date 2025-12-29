@@ -52,4 +52,7 @@ export interface Order {
   }[];
   totalAmount: number;
   paymentMethod: PaymentMethod;
+  // New flags for checklist
+  isPrinted?: boolean; // Физический чек (ККМ)
+  isRecorded?: boolean; // Запись в тетрадь
 }

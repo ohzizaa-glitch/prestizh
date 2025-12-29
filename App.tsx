@@ -9,9 +9,11 @@ import EarningsModal from './components/EarningsModal';
 import DigitalReceiptModal from './components/DigitalReceiptModal';
 import PhotoCutter from './components/PhotoCutter';
 import CloudInbox from './components/CloudInbox';
+import NotebookModal from './components/NotebookModal';
+import TodoListModal from './components/TodoListModal';
 import WorkloadWidget, { ActiveClient } from './components/WorkloadWidget';
 import Toast from './components/Toast';
-import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload, Menu, X, ChevronRight } from 'lucide-react';
+import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload, Menu, X, ChevronRight, BookOpen, ClipboardList } from 'lucide-react';
 import { PaymentMethod, Order, ServiceItem } from './types';
 
 export default function App() {
@@ -176,8 +178,10 @@ export default function App() {
   // Modals States
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isEarningsOpen, setIsEarningsOpen] = useState(false);
+  const [isNotebookOpen, setIsNotebookOpen] = useState(false);
   const [isCutterOpen, setIsCutterOpen] = useState(false);
   const [isInboxOpen, setIsInboxOpen] = useState(false);
+  const [isTodoOpen, setIsTodoOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
   // Toast System
@@ -227,9 +231,12 @@ export default function App() {
   }, []);
 
   const getActualPrice = (item: ServiceItem, qty: number, variantId?: string) => {
+    // --- LOCKED BUSINESS LOGIC: PRINTING DISCOUNTS ---
+    // DO NOT REMOVE OR MODIFY THESE THRESHOLDS
     if (item.id === 'print_10x15' && qty >= 100) return 19;
     if (item.id === 'print_15x20' && qty >= 50) return 35;
     if (item.id === 'print_20x30' && qty >= 30) return 75;
+    // -------------------------------------------------
 
     if (variantId) {
        const variantsList = item.variants || PHOTO_VARIANTS;
@@ -272,6 +279,17 @@ export default function App() {
   const handleDeleteOrder = (orderId: string) => {
     setOrderHistory(prev => prev.filter(o => o.id !== orderId));
     showToast('Заказ удален из истории', 'info');
+  };
+
+  const handleDeleteOrders = (orderIds: string[]) => {
+    setOrderHistory(prev => prev.filter(o => !orderIds.includes(o.id)));
+    showToast(`Удалено заказов: ${orderIds.length}`, 'info');
+  };
+
+  const handleToggleOrderFlag = (orderId: string, flag: 'isPrinted' | 'isRecorded') => {
+    setOrderHistory(prev => prev.map(o => 
+      o.id === orderId ? { ...o, [flag]: !o[flag] } : o
+    ));
   };
 
   const handleImportHistory = (importedOrders: Order[]) => {
@@ -320,9 +338,8 @@ export default function App() {
   const handleSaveOrder = (paymentMethod: PaymentMethod) => {
     const orderItems: Order['items'] = [];
     let hasDigitalItems = false;
-    let digitalSubtotal = 0;
-    const digitalOrderItems: Order['items'] = [];
     
+    // Формируем единый список всех товаров в заказе
     Object.entries(quantities).forEach(([key, value]) => {
        const qty = value as number;
        const [itemId, variantId] = key.split('__');
@@ -331,6 +348,12 @@ export default function App() {
           const variantsList = item.variants || PHOTO_VARIANTS;
           const variant = variantId ? variantsList.find(v => v.id === variantId) : undefined;
           const price = getActualPrice(item, qty, variantId);
+          
+          // Проверяем, является ли эта позиция цифровой услугой
+          if (DIGITAL_CATEGORY_IDS.includes(item.categoryId || '')) {
+            hasDigitalItems = true;
+          }
+
           const itemData = {
              name: item.name,
              variant: variant?.label,
@@ -340,40 +363,36 @@ export default function App() {
              categoryId: item.categoryId
           };
           orderItems.push(itemData);
-          if (DIGITAL_CATEGORY_IDS.includes(item.categoryId || '')) {
-            hasDigitalItems = true;
-            digitalSubtotal += qty * price;
-            digitalOrderItems.push(itemData);
-          }
        }
     });
 
     const currentReceiptNum = nextReceiptNumber.toString().padStart(6, '0');
     const newOrder: Order = {
        id: Date.now().toString(),
+       // Если есть хоть одна цифровая услуга, генерируем номер квитанции
        receiptNumber: hasDigitalItems ? currentReceiptNum : undefined,
        date: new Date().toISOString(),
        issueDate: new Date().toISOString(),
        timestamp: Date.now(),
        items: orderItems,
        totalAmount: totalPrice,
-       paymentMethod 
+       paymentMethod,
+       isPrinted: false, // Default state
+       isRecorded: false // Default state
     };
 
     setOrderHistory(prev => [newOrder, ...prev]);
 
     if (hasDigitalItems) {
       setNextReceiptNumber(prev => prev + 1);
+      // Передаем ВЕСЬ заказ в модальное окно квитанции
+      setActiveDigitalOrder(newOrder); 
+    } else {
+      showToast('Заказ успешно сохранен');
     }
     
     setQuantities({});
     setCustomPrices({});
-
-    if (hasDigitalItems) {
-      setActiveDigitalOrder({ ...newOrder, items: digitalOrderItems, totalAmount: digitalSubtotal });
-    } else {
-      showToast('Заказ успешно сохранен');
-    }
   };
 
   const scrollToCategory = (id: string) => {
@@ -449,6 +468,8 @@ export default function App() {
           
           <div className="flex items-center space-x-3 overflow-x-auto no-scrollbar pb-1">
              <button onClick={() => setIsEarningsOpen(true)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-tight dark:text-slate-400 text-slate-500 hover:text-emerald-500 transition-colors"><TrendingUp size={16}/><span>Доходы</span></button>
+             <button onClick={() => setIsNotebookOpen(true)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-tight dark:text-slate-400 text-slate-500 hover:text-blue-500 transition-colors"><BookOpen size={16}/><span>Тетрадь</span></button>
+             <button onClick={() => setIsTodoOpen(true)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-tight dark:text-slate-400 text-slate-500 hover:text-violet-500 transition-colors"><ClipboardList size={16}/><span>Список дел</span></button>
              <button onClick={() => setIsHistoryOpen(true)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-tight dark:text-slate-400 text-slate-500 hover:text-blue-500 transition-colors"><History size={16}/><span>История</span></button>
              <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-tight dark:text-slate-400 text-slate-500 hover:text-slate-900 transition-colors"><Settings size={16}/><span>Настройки</span></button>
           </div>
@@ -491,6 +512,7 @@ export default function App() {
             quantities={quantities} 
             onQuantityChange={handleQuantityChange} 
             isDarkMode={isDarkMode}
+            getPrice={getActualPrice}
           />
         )}
 
@@ -611,6 +633,20 @@ export default function App() {
           onClear={handleClearCart} 
           onSaveOrder={handleSaveOrder} 
           isDarkMode={isDarkMode}
+          getPrice={getActualPrice}
+        />
+      )}
+      {isNotebookOpen && (
+        <NotebookModal
+          orders={orderHistory}
+          onClose={() => setIsNotebookOpen(false)}
+          isDarkMode={isDarkMode}
+        />
+      )}
+      {isTodoOpen && (
+        <TodoListModal
+          onClose={() => setIsTodoOpen(false)}
+          isDarkMode={isDarkMode}
         />
       )}
       {isHistoryOpen && (
@@ -619,9 +655,11 @@ export default function App() {
           onClose={() => setIsHistoryOpen(false)} 
           onClearHistory={handleClearHistory} 
           onDeleteOrder={handleDeleteOrder} 
+          onDeleteOrders={handleDeleteOrders}
           onImportHistory={handleImportHistory}
           onViewDigitalReceipt={(order) => { setActiveDigitalOrder(order); setIsHistoryOpen(false); }} 
           isDarkMode={isDarkMode}
+          onToggleFlag={handleToggleOrderFlag}
         />
       )}
       {isEarningsOpen && (
@@ -635,6 +673,7 @@ export default function App() {
         <PhotoCutter 
           onClose={() => setIsCutterOpen(false)} 
           isDarkMode={isDarkMode}
+          onNotify={showToast}
         />
       )}
       {isInboxOpen && (

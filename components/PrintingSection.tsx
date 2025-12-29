@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { ServiceCategory } from '../types';
-import { Image as ImageIcon } from 'lucide-react';
+import { ServiceCategory, ServiceItem } from '../types';
+import { Image as ImageIcon, Tag } from 'lucide-react';
 import Counter from './Counter';
 
 interface PrintingSectionProps {
@@ -10,9 +10,18 @@ interface PrintingSectionProps {
   onQuantityChange: (id: string, qty: number) => void;
   isDarkMode: boolean;
   id?: string;
+  getPrice?: (item: ServiceItem, qty: number) => number;
 }
 
-const PrintingSection: React.FC<PrintingSectionProps> = ({ category, quantities, onQuantityChange, isDarkMode, id }) => {
+const PrintingSection: React.FC<PrintingSectionProps> = ({ category, quantities, onQuantityChange, isDarkMode, id, getPrice }) => {
+  
+  const getDiscountHint = (itemId: string) => {
+    if (itemId === 'print_10x15') return 'от 100 шт: 19₽';
+    if (itemId === 'print_15x20') return 'от 50 шт: 35₽';
+    if (itemId === 'print_20x30') return 'от 30 шт: 75₽';
+    return null;
+  };
+
   return (
     <div id={id} className={`scroll-mt-28 rounded-2xl border overflow-hidden mb-8 transition-all ${isDarkMode ? 'bg-gradient-to-br from-slate-800 to-slate-900 border-slate-700' : 'bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-100'}`}>
       <div className="p-6">
@@ -29,7 +38,11 @@ const PrintingSection: React.FC<PrintingSectionProps> = ({ category, quantities,
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           {category.items.map((item) => {
             const qty = quantities[item.id] || 0;
-            const subtotal = qty * item.price;
+            const price = getPrice ? getPrice(item, qty) : item.price;
+            const subtotal = qty * price;
+            
+            const isDiscounted = price < item.price;
+            const discountHint = getDiscountHint(item.id);
             
             return (
               <div key={item.id} className={`rounded-2xl p-4 shadow-sm border flex flex-col items-center text-center transition-all hover:-translate-y-1 duration-200 ${isDarkMode ? 'bg-slate-800 border-slate-700 hover:border-blue-500' : 'bg-white border-blue-50 hover:shadow-xl hover:shadow-blue-500/5 hover:border-blue-100'}`}>
@@ -44,7 +57,18 @@ const PrintingSection: React.FC<PrintingSectionProps> = ({ category, quantities,
                    />
                 </div>
                 <h3 className={`font-black uppercase tracking-tighter text-lg mb-1 ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>{item.name.replace('Печать ', '')}</h3>
-                <p className="text-slate-500 mb-4 font-bold text-sm tracking-tight">{item.price} ₽ / шт</p>
+                
+                <div className="mb-4 flex flex-col items-center">
+                  <p className="text-slate-500 font-bold text-sm tracking-tight">
+                    {isDiscounted && <span className="line-through opacity-50 mr-2">{item.price}</span>}
+                    <span className={isDiscounted ? "text-emerald-500 font-black" : ""}>{price} ₽ / шт</span>
+                  </p>
+                  {discountHint && (
+                    <div className={`mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${isDarkMode ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
+                      <Tag size={10} /> {discountHint}
+                    </div>
+                  )}
+                </div>
                 
                 <div className="w-full flex justify-center mb-3">
                   <Counter 

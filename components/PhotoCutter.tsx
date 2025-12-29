@@ -1,4 +1,7 @@
 
+// LOCKED STATE: Rotation enabled, JPEG Export (800 DPI), Original Filename preserved.
+// DO NOT MODIFY LOGIC WITHOUT EXPLICIT USER REQUEST.
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw, RotateCw, RotateCcw as RotateLeftIcon } from 'lucide-react';
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
