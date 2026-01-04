@@ -124,8 +124,8 @@ export const SERVICE_CATEGORIES: ServiceCategory[] = [
     title: 'Фото на документы',
     icon: Camera,
     items: [
-      { id: 'doc_photo', name: 'Фото на документы', price: 350, unit: 'комплект', hasVariants: true },
-      { id: 'doc_copy', name: 'Дополнительный комплект фото', price: 70, unit: 'комплект', hasVariants: true },
+      { id: 'doc_photo', name: 'Фото на документы', price: 400, unit: 'комплект', hasVariants: true },
+      { id: 'doc_copy', name: 'Дополнительный комплект фото', price: 75, unit: 'комплект', hasVariants: true },
       { id: 'doc_retouch', name: 'Ретушь фото на документы', price: 50, unit: 'услуга' },
     ],
   },
@@ -208,8 +208,8 @@ export const PRINTING_CATEGORY: ServiceCategory = {
   title: 'Печать фотографий',
   icon: ImageIcon,
   items: [
-    { id: 'print_10x15', name: 'Печать 10 x 15', price: 20, unit: 'шт' },
-    { id: 'print_15x20', name: 'Печать 15 x 20', price: 40, unit: 'шт' },
-    { id: 'print_20x30', name: 'Печать 20 x 30', price: 80, unit: 'шт' },
+    { id: 'print_10x15', name: 'Печать 10 x 15', price: 25, unit: 'шт' },
+    { id: 'print_15x20', name: 'Печать 15 x 20', price: 50, unit: 'шт' },
+    { id: 'print_20x30', name: 'Печать 20 x 30', price: 100, unit: 'шт' },
   ]
 };

@@ -16,9 +16,9 @@ interface PrintingSectionProps {
 const PrintingSection: React.FC<PrintingSectionProps> = ({ category, quantities, onQuantityChange, isDarkMode, id, getPrice }) => {
   
   const getDiscountHint = (itemId: string) => {
-    if (itemId === 'print_10x15') return 'от 100 шт: 19₽';
-    if (itemId === 'print_15x20') return 'от 50 шт: 35₽';
-    if (itemId === 'print_20x30') return 'от 30 шт: 75₽';
+    if (itemId === 'print_10x15') return 'от 100 шт: 24₽, от 200: 23₽';
+    if (itemId === 'print_15x20') return 'от 50 шт: 45₽';
+    if (itemId === 'print_20x30') return 'от 30 шт: 95₽';
     return null;
   };
 

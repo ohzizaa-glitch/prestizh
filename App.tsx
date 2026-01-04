@@ -232,10 +232,15 @@ export default function App() {
 
   const getActualPrice = (item: ServiceItem, qty: number, variantId?: string) => {
     // --- LOCKED BUSINESS LOGIC: PRINTING DISCOUNTS ---
-    // DO NOT REMOVE OR MODIFY THESE THRESHOLDS
-    if (item.id === 'print_10x15' && qty >= 100) return 19;
-    if (item.id === 'print_15x20' && qty >= 50) return 35;
-    if (item.id === 'print_20x30' && qty >= 30) return 75;
+    // 10x15: 100-199 -> 24rub, 200+ -> 23rub, Base -> 25rub
+    if (item.id === 'print_10x15') {
+        if (qty >= 200) return 23;
+        if (qty >= 100) return 24;
+    }
+    // 15x20: 50+ -> 45rub, Base -> 50rub
+    if (item.id === 'print_15x20' && qty >= 50) return 45;
+    // 20x30: 30+ -> 95rub, Base -> 100rub
+    if (item.id === 'print_20x30' && qty >= 30) return 95;
     // -------------------------------------------------
 
     if (variantId) {
