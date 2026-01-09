@@ -1,4 +1,7 @@
 
+// LOCKED STATE: Rotation enabled, JPEG Export (800 DPI), Original Filename preserved.
+// DO NOT MODIFY LOGIC WITHOUT EXPLICIT USER REQUEST.
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw, RotateCw, RotateCcw as RotateLeftIcon, Grid } from 'lucide-react';
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
@@ -31,351 +34,399 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
   const [isImgLoaded, setIsImgLoaded] = useState(false);
 
   const activeSpecs = useMemo(() => {
-     return selectedVariant;
-  }, [selectedVariant]);
+    return isCustom ? {
+      ...selectedVariant,
+      id: 'custom',
+      label: 'Свой размер',
+      widthMm: customWidth || 1,
+      heightMm: customHeight || 1,
+      faceHeightMin: 0, faceHeightMax: 0, topMarginMin: 0, topMarginMax: 0
+    } : selectedVariant;
+  }, [isCustom, selectedVariant, customWidth, customHeight]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      // Сохраняем имя файла без расширения
+      const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+      setOriginalFilename(nameWithoutExt);
+
       const reader = new FileReader();
-      
-      // Extract filename without extension
-      const name = file.name.replace(/\.[^/.]+$/, "");
-      setOriginalFilename(name);
-
-      reader.addEventListener('load', () => {
-        setImage(reader.result as string);
-        setCrop({ x: 50, y: 50, scale: 1, rotation: 0 }); // Reset crop
+      reader.onload = (event) => {
+        setImage(event.target?.result as string);
         setIsImgLoaded(false);
-      });
+        setCrop({ x: 50, y: 50, scale: 1, rotation: 0 });
+      };
       reader.readAsDataURL(file);
     }
   };
 
-  // Отрисовка
-  const draw = useCallback(() => {
-    if (!image || !canvasRef.current || !imgRef.current) return;
+  // Функция перемещения.
+  const move = (dx: number, dy: number) => {
+    setCrop(prev => ({
+      ...prev,
+      x: Math.min(100, Math.max(0, prev.x + dx)),
+      y: Math.min(100, Math.max(0, prev.y + dy))
+    }));
+  };
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
     
+    // Чувствительность движения (инвертированная, чтобы "тянуть" фото)
+    // При зуме нужно уменьшать скорость
+    const sensitivity = 0.15 / crop.scale; 
+    
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    
+    // Корректируем вектор движения в зависимости от угла поворота
+    const rad = -crop.rotation * Math.PI / 180;
+    const rotDx = dx * Math.cos(rad) - dy * Math.sin(rad);
+    const rotDy = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+    move(-rotDx * sensitivity, -rotDy * sensitivity);
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseUp = () => setIsDragging(false);
+
+  // ==========================================
+  // УНИВЕРСАЛЬНАЯ ФУНКЦИЯ ОТРИСОВКИ (Optimized with useCallback)
+  // ==========================================
+  const drawToCanvas = useCallback((
+    ctx: CanvasRenderingContext2D, 
+    img: HTMLImageElement, 
+    width: number, 
+    height: number, 
+    scaleFactor: number, // Множитель разрешения (10 для превью, 32 для экспорта)
+    drawGuides: boolean,
+    drawGrid: boolean
+  ) => {
+    // 1. Очистка и белый фон
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+
+    if (activeSpecs.isGrayscale) {
+       ctx.filter = 'grayscale(100%)';
+    }
+
+    ctx.save();
+
+    // 2. Трансформация координат
+    ctx.translate(width / 2, height / 2);
+    ctx.rotate((crop.rotation * Math.PI) / 180);
+    ctx.scale(crop.scale, crop.scale);
+
+    // 3. Рисуем изображение
+    const offsetX = (crop.x / 100) * img.width;
+    const offsetY = (crop.y / 100) * img.height;
+    
+    // Базовый масштаб: чтобы картинка по высоте влезала в рамку (примерно) при scale=1
+    const baseScale = Math.max(
+      width / img.width,
+      height / img.height
+    );
+
+    ctx.scale(baseScale, baseScale);
+
+    // Рисуем с высоким качеством
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    
+    ctx.drawImage(img, -offsetX, -offsetY);
+
+    ctx.restore();
+    ctx.filter = 'none';
+
+    // 4. Уголок (если нужен)
+    if (activeSpecs.cornerSide) {
+        const cornerSize = width * 0.28; 
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        if (activeSpecs.cornerSide === 'left') {
+          ctx.moveTo(0, height - cornerSize);
+          ctx.quadraticCurveTo(cornerSize, height - cornerSize, cornerSize, height);
+          ctx.lineTo(0, height);
+        } else {
+          ctx.moveTo(width, height - cornerSize);
+          ctx.quadraticCurveTo(width - cornerSize, height - cornerSize, width - cornerSize, height);
+          ctx.lineTo(width, height);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // 5. Сетка (Grid) - Новая фича
+    if (drawGrid) {
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.lineWidth = 1 * scaleFactor * 0.5;
+        
+        // Трети
+        ctx.moveTo(width / 3, 0);
+        ctx.lineTo(width / 3, height);
+        ctx.moveTo(width * 2 / 3, 0);
+        ctx.lineTo(width * 2 / 3, height);
+        
+        ctx.moveTo(0, height / 3);
+        ctx.lineTo(width, height / 3);
+        ctx.moveTo(0, height * 2 / 3);
+        ctx.lineTo(width, height * 2 / 3);
+        
+        ctx.stroke();
+    }
+
+    // 6. Линии разметки биометрии (только для превью)
+    if (drawGuides && activeSpecs.faceHeightMin > 0) {
+      const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
+        const yPx = yMm * scaleFactor;
+        ctx.beginPath();
+        if (isDashed) ctx.setLineDash([5, 5]);
+        else ctx.setLineDash([]);
+        
+        ctx.moveTo(0, yPx);
+        ctx.lineTo(width, yPx);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      };
+
+      // Верхняя граница (Красные)
+      drawLine(activeSpecs.topMarginMin, 'rgba(255, 0, 0, 0.8)'); 
+      drawLine(activeSpecs.topMarginMax, 'rgba(255, 0, 0, 0.4)', true);
+      
+      // Нижняя граница (Синие)
+      drawLine(activeSpecs.topMarginMin + activeSpecs.faceHeightMin, 'rgba(0, 0, 255, 0.8)');
+      drawLine(activeSpecs.topMarginMax + activeSpecs.faceHeightMax, 'rgba(0, 0, 255, 0.4)', true);
+
+      // Центр
+      ctx.beginPath();
+      ctx.setLineDash([5, 5]);
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, height);
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }, [activeSpecs, crop]);
+
+  // Рендеринг превью
+  useEffect(() => {
     const canvas = canvasRef.current;
+    const img = imgRef.current;
+    if (!canvas || !img || !isImgLoaded) return;
+
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // 1. Настройка размеров Canvas (Высокое разрешение для печати)
-    // 300 DPI = ~11.8 пикселей на мм. Для запаса берем 32 px/mm.
-    const PPCM = 32; 
-    const widthPx = activeSpecs.widthMm * PPCM;
-    const heightPx = activeSpecs.heightMm * PPCM;
+    const PREVIEW_SCALE = 10;
+    const targetWidth = activeSpecs.widthMm * PREVIEW_SCALE;
+    const targetHeight = activeSpecs.heightMm * PREVIEW_SCALE;
 
-    canvas.width = widthPx;
-    canvas.height = heightPx;
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
 
-    // Заливка белым (на случай прозрачности)
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawToCanvas(ctx, img, targetWidth, targetHeight, PREVIEW_SCALE, true, showGrid);
 
-    // 2. Параметры изображения
+  }, [crop, activeSpecs, isImgLoaded, showGrid, drawToCanvas]);
+
+
+  // Сохранение
+  const downloadResult = () => {
     const img = imgRef.current;
-    
-    // Центр холста
-    const cx = canvas.width / 2;
-    const cy = canvas.height / 2;
+    if (!img) return;
 
-    ctx.save();
-    
-    // Переносим начало координат в центр холста
-    ctx.translate(cx, cy);
-    
-    // Применяем поворот (в радианах)
-    ctx.rotate((crop.rotation * Math.PI) / 180);
+    const offCanvas = document.createElement('canvas');
+    const ctx = offCanvas.getContext('2d');
+    if (!ctx) return;
 
-    // Масштабирование
-    // Базовый масштаб: чтобы картинка покрывала область кропа по меньшей стороне, но вписывалась
-    // Вычисляем scale factor чтобы картинка "вписалась" или "покрыла" область
-    // Реализуем "cover" логику относительно минимальной стороны
-    
-    const imgRatio = img.naturalWidth / img.naturalHeight;
-    const canvasRatio = widthPx / heightPx;
-    
-    let baseScale;
-    if (imgRatio > canvasRatio) {
-        baseScale = heightPx / img.naturalHeight;
-    } else {
-        baseScale = widthPx / img.naturalWidth;
-    }
-    
-    const finalScale = baseScale * crop.scale;
-    ctx.scale(finalScale, finalScale);
+    // 800 DPI (приближенно).
+    // 32 пикселя на 1 мм = ~812 DPI.
+    const EXPORT_SCALE = 32;
 
-    // Смещение (crop.x/y - это проценты от размеров изображения)
-    // 50% - это центр изображения должен быть в центре холста.
-    // Если crop.x = 60%, значит мы сдвинули центр картинки влево.
-    // Координаты рисуются от центра картинки (-img.width/2).
-    
-    const offsetX = (crop.x - 50) / 100 * img.naturalWidth;
-    const offsetY = (crop.y - 50) / 100 * img.naturalHeight;
+    const targetWidth = activeSpecs.widthMm * EXPORT_SCALE;
+    const targetHeight = activeSpecs.heightMm * EXPORT_SCALE;
 
-    // Рисуем картинку, сдвигая её так, чтобы нужная точка (crop.x, crop.y) оказалась в центре (0,0 текущих координат)
-    ctx.translate(-offsetX, -offsetY);
+    offCanvas.width = targetWidth;
+    offCanvas.height = targetHeight;
 
-    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+    // Рисуем без линий разметки и сетки
+    drawToCanvas(ctx, img, targetWidth, targetHeight, EXPORT_SCALE, false, false);
 
-    ctx.restore();
+    // Генерация имени файла
+    const sizeStr = `${activeSpecs.widthMm}x${activeSpecs.heightMm}`;
+    const dateStr = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-');
+    const filename = `${originalFilename}_${sizeStr}_${dateStr}.jpg`;
 
-  }, [image, crop, activeSpecs]);
-
-  useEffect(() => {
-    if (image && isImgLoaded) {
-        draw();
-    }
-  }, [image, isImgLoaded, crop, activeSpecs, draw]);
-
-  // Handle Dragging for Pan
-  const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
-    setIsDragging(true);
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-    setDragStart({ x: clientX, y: clientY });
-  };
-
-  const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDragging || !imgRef.current) return;
-    
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-    
-    const dx = clientX - dragStart.x;
-    const dy = clientY - dragStart.y;
-    
-    // Чувствительность перемещения зависит от зума
-    const sensitivity = 0.15 / crop.scale; 
-
-    setCrop(prev => ({
-      ...prev,
-      x: prev.x - dx * sensitivity,
-      y: prev.y - dy * sensitivity
-    }));
-
-    setDragStart({ x: clientX, y: clientY });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Zoom Control
-  const handleZoom = (delta: number) => {
-    setCrop(prev => ({
-      ...prev,
-      scale: Math.max(0.1, prev.scale + delta)
-    }));
-  };
-
-  // Rotate Control
-  const handleRotate = (angle: number) => {
-    setCrop(prev => ({
-      ...prev,
-      rotation: Math.round((prev.rotation + angle) / 90) * 90 // Snap to 90 degrees
-    }));
-  };
-
-  const handleSave = () => {
-    if (!canvasRef.current || !image) return;
-    
-    // Create a temporary link to download
     const link = document.createElement('a');
-    // Save as JPEG per user request
-    link.download = `${originalFilename}_${activeSpecs.widthMm}x${activeSpecs.heightMm}.jpg`;
-    link.href = canvasRef.current.toDataURL('image/jpeg', 0.95); // High quality JPEG
+    link.download = filename;
+    link.href = offCanvas.toDataURL('image/jpeg', 1.0); 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     
-    if (onNotify) onNotify('Фото сохранено (JPEG)', 'success');
+    if (onNotify) onNotify(`Фото сохранено: ${filename}`, 'success');
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className={`w-full max-w-6xl h-[90vh] rounded-2xl flex flex-col md:flex-row overflow-hidden shadow-2xl ${isDarkMode ? 'bg-slate-900 border border-slate-700' : 'bg-white'}`}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+      <div className={`w-full max-w-6xl rounded-3xl shadow-2xl flex flex-col md:flex-row overflow-hidden max-h-[95vh] ${isDarkMode ? 'bg-slate-900 text-white' : 'bg-white text-slate-800'}`}>
         
-        {/* Left Sidebar: Controls */}
-        <div className={`w-full md:w-80 flex-shrink-0 p-6 border-b md:border-b-0 md:border-r flex flex-col overflow-y-auto ${isDarkMode ? 'border-slate-700 bg-slate-800' : 'border-slate-100 bg-white'}`}>
-           <div className="flex justify-between items-center mb-6">
-             <h2 className={`text-xl font-black uppercase tracking-tighter ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>Резак</h2>
-             <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500">
-               <X size={24} />
-             </button>
-           </div>
+        {/* Рабочая область */}
+        <div className="flex-grow p-4 flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-950/50 relative overflow-hidden select-none">
+          <button onClick={onClose} className="absolute top-4 right-4 p-2 hover:bg-white/10 rounded-full transition-colors z-10">
+            <X size={24} />
+          </button>
 
-           {!image ? (
-             <div className="flex-grow flex flex-col items-center justify-center text-center space-y-4 py-12 border-2 border-dashed rounded-2xl border-slate-300 dark:border-slate-700">
-                <div className={`p-4 rounded-full ${isDarkMode ? 'bg-slate-700 text-slate-400' : 'bg-blue-50 text-blue-500'}`}>
-                  <Upload size={32} />
-                </div>
-                <div>
-                  <p className="font-bold text-sm mb-1">Загрузите фото</p>
-                  <p className="text-xs text-slate-500">JPG, PNG</p>
-                </div>
-                <label className="cursor-pointer">
-                  <span className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-black uppercase text-xs tracking-wider transition-colors shadow-lg shadow-blue-500/30">
-                    Выбрать файл
-                  </span>
-                  <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
-                </label>
-             </div>
-           ) : (
-             <div className="flex flex-col h-full space-y-6">
-                
-                {/* Variant Selector */}
-                <div>
-                   <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Формат</label>
-                   <div className="grid grid-cols-1 gap-2">
-                      <div className="relative">
-                        <select 
-                          value={selectedVariant.id}
-                          onChange={(e) => {
-                             const v = PHOTO_VARIANTS.find(vv => vv.id === e.target.value);
-                             if (v) setSelectedVariant(v);
-                          }}
-                          className={`w-full appearance-none px-4 py-3 rounded-xl font-bold text-sm outline-none border-2 transition-all ${isDarkMode ? 'bg-slate-700 border-slate-600 text-white focus:border-blue-500' : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-blue-500'}`}
-                        >
-                          {PHOTO_VARIANTS.map(v => (
-                            <option key={v.id} value={v.id}>{v.label}</option>
-                          ))}
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-slate-500">
-                          <ChevronDown size={16} />
-                        </div>
-                      </div>
-                   </div>
-                   <div className="mt-2 text-xs text-slate-500 font-medium px-1">
-                      {selectedVariant.description}
-                   </div>
-                </div>
-
-                {/* Controls */}
-                <div className="space-y-4">
-                   <div className="flex items-center justify-between">
-                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Масштаб</label>
-                     <span className="text-xs font-bold text-blue-500">{Math.round(crop.scale * 100)}%</span>
-                   </div>
-                   <div className="flex items-center gap-2">
-                      <button onClick={() => handleZoom(-0.1)} className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200'}`}><Minimize2 size={16}/></button>
-                      <input 
-                        type="range" 
-                        min="0.1" 
-                        max="5" 
-                        step="0.1" 
-                        value={crop.scale}
-                        onChange={(e) => setCrop(prev => ({ ...prev, scale: parseFloat(e.target.value) }))}
-                        className="flex-grow h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <button onClick={() => handleZoom(0.1)} className={`p-2 rounded-lg ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-slate-100 hover:bg-slate-200'}`}><Maximize2 size={16}/></button>
-                   </div>
-                   
-                   <div className="flex items-center justify-between pt-2">
-                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Поворот</label>
-                   </div>
-                   <div className="grid grid-cols-2 gap-2">
-                      <button onClick={() => handleRotate(-90)} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs transition-colors ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
-                         <RotateCcw size={16} /> -90°
-                      </button>
-                      <button onClick={() => handleRotate(90)} className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs transition-colors ${isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}>
-                         <RotateCw size={16} /> +90°
-                      </button>
-                   </div>
-
-                   <button 
-                      onClick={() => setShowGrid(!showGrid)}
-                      className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs transition-colors mt-2 ${showGrid ? 'bg-blue-600 text-white' : (isDarkMode ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600')}`}
-                   >
-                      <Grid size={16} /> {showGrid ? 'Скрыть сетку' : 'Показать сетку'}
-                   </button>
-                </div>
-
-                <div className="flex-grow"></div>
-
-                <div className="pt-6 border-t border-dashed border-slate-300 dark:border-slate-700">
-                   <div className="flex gap-2">
-                     <label className="flex-grow cursor-pointer">
-                        <div className={`flex items-center justify-center space-x-2 py-3 rounded-xl border-2 border-dashed transition-all ${isDarkMode ? 'border-slate-600 hover:border-slate-500 text-slate-400' : 'border-slate-300 hover:border-slate-400 text-slate-500'}`}>
-                          <Upload size={16} />
-                          <span className="font-bold text-xs uppercase">Другое фото</span>
-                        </div>
-                        <input type="file" className="hidden" accept="image/*" onChange={handleFileChange} />
-                     </label>
-                   </div>
-                   <button 
-                     onClick={handleSave}
-                     className="w-full mt-3 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black uppercase tracking-tighter shadow-lg shadow-emerald-500/30 transition-all flex items-center justify-center gap-2"
-                   >
-                     <Check size={20} />
-                     <span>Сохранить</span>
-                   </button>
-                </div>
-             </div>
-           )}
-        </div>
-
-        {/* Right Area: Canvas Preview */}
-        <div className={`flex-grow relative overflow-hidden flex items-center justify-center ${isDarkMode ? 'bg-[#0f172a]' : 'bg-slate-100'}`}
-             onMouseDown={handleMouseDown}
-             onMouseMove={handleMouseMove}
-             onMouseUp={handleMouseUp}
-             onMouseLeave={handleMouseUp}
-             onTouchStart={handleMouseDown}
-             onTouchMove={handleMouseMove}
-             onTouchEnd={handleMouseUp}
-        >
-           {/* Background Grid Pattern */}
-           <div className="absolute inset-0 opacity-10 pointer-events-none" 
-                style={{ 
-                    backgroundImage: `linear-gradient(45deg, #888 25%, transparent 25%), linear-gradient(-45deg, #888 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #888 75%), linear-gradient(-45deg, transparent 75%, #888 75%)`,
-                    backgroundSize: '20px 20px',
-                    backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px' 
-                }} 
-           />
-
-           {image && (
-             <div className="relative shadow-2xl" style={{ width: 'fit-content', height: 'fit-content' }}>
-               <canvas 
-                 ref={canvasRef} 
-                 className="max-w-full max-h-[80vh] block cursor-move touch-none"
-                 style={{ 
-                   width: 'auto', 
-                   height: 'auto', 
-                   maxHeight: '80vh', 
-                   maxWidth: '100%' 
-                 }}
-               />
-               <img 
-                 ref={imgRef}
-                 src={image}
-                 className="hidden"
-                 alt="source"
-                 onLoad={() => { setIsImgLoaded(true); }}
-               />
-               
-               {/* Overlay Guidelines (The "Cut" lines) */}
-               {showGrid && (
-                 <div className="absolute inset-0 pointer-events-none border border-red-500/30 z-10">
-                    <div className="absolute top-0 left-[4mm] bottom-0 border-l border-red-500/20"></div>
-                    <div className="absolute top-[2mm] left-0 right-0 border-t border-red-500/20"></div>
-                    {/* Center Cross */}
-                    <div className="absolute top-1/2 left-0 right-0 border-t border-cyan-500/30"></div>
-                    <div className="absolute top-0 bottom-0 left-1/2 border-l border-cyan-500/30"></div>
-                 </div>
-               )}
-             </div>
-           )}
-
-           {!image && (
-              <div className="text-slate-400 flex flex-col items-center select-none pointer-events-none">
-                 <Maximize2 size={48} className="opacity-20 mb-4" />
-                 <p className="font-black uppercase tracking-widest opacity-30">Область предпросмотра</p>
+          {!image ? (
+            <label className="cursor-pointer group flex flex-col items-center animate-in fade-in zoom-in duration-300">
+              <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center mb-4 shadow-xl shadow-blue-500/20 group-hover:scale-110 transition-transform">
+                <Upload size={40} className="text-white" />
               </div>
-           )}
+              <p className="font-black uppercase tracking-tighter text-lg">Загрузить фото</p>
+              <input type="file" className="hidden" onChange={handleImageUpload} accept="image/*" />
+            </label>
+          ) : (
+            <div className="flex flex-col items-center gap-4 w-full h-full justify-center">
+              
+              {/* Canvas Container */}
+              <div 
+                className="relative shadow-2xl border-[10px] border-white dark:border-slate-800 cursor-move overflow-hidden bg-white"
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                style={{
+                  boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)'
+                }}
+              >
+                <canvas ref={canvasRef} style={{ maxHeight: '60vh', maxWidth: '100%', objectFit: 'contain', display: 'block' }} />
+                <img 
+                  ref={imgRef}
+                  src={image} 
+                  className="hidden" 
+                  onLoad={() => setIsImgLoaded(true)} 
+                />
+              </div>
+
+              {/* Controls Bar */}
+              <div className={`flex flex-wrap items-center justify-center gap-4 p-3 rounded-2xl border shadow-lg animate-in slide-in-from-bottom-4 duration-300 ${isDarkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                
+                {/* Scale */}
+                <div className="flex items-center gap-2 px-2">
+                  <Minimize2 size={16} className="text-slate-400"/>
+                  <input 
+                    type="range" 
+                    min="0.1" 
+                    max="5" 
+                    step="0.01" 
+                    value={crop.scale} 
+                    onChange={(e) => setCrop(prev => ({ ...prev, scale: parseFloat(e.target.value) }))}
+                    className="w-24 sm:w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                  />
+                  <Maximize2 size={16} className="text-slate-400"/>
+                </div>
+
+                <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
+
+                {/* Rotation */}
+                <div className="flex items-center gap-2 px-2">
+                   <RotateLeftIcon size={16} className="text-slate-400" />
+                   <input 
+                    type="range" 
+                    min="-45" 
+                    max="45" 
+                    step="0.5" 
+                    value={crop.rotation} 
+                    onChange={(e) => setCrop(prev => ({ ...prev, rotation: parseFloat(e.target.value) }))}
+                    className="w-24 sm:w-32 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                  />
+                  <RotateCw size={16} className="text-slate-400" />
+                </div>
+
+                <div className="w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block"></div>
+
+                <button 
+                  onClick={() => setShowGrid(!showGrid)}
+                  className={`p-2 rounded-xl transition-all ${showGrid ? 'bg-blue-600 text-white' : (isDarkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100')}`}
+                  title="Сетка"
+                >
+                  <Grid size={20} />
+                </button>
+
+                <button 
+                  onClick={() => setCrop({ x: 50, y: 50, scale: 1, rotation: 0 })}
+                  className={`p-2 rounded-xl transition-all hover:bg-red-500 hover:text-white ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}
+                  title="Сброс"
+                >
+                  <RotateCcw size={20} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
+        {/* Панель настроек */}
+        <div className={`w-full md:w-80 p-0 flex flex-col border-l z-20 ${isDarkMode ? 'border-slate-800 bg-slate-900' : 'border-slate-100 bg-white'}`}>
+          <div className="p-6 border-b dark:border-slate-800 border-slate-100 flex-shrink-0">
+             <h3 className={`text-lg font-black uppercase tracking-tighter ${isDarkMode ? 'text-white' : 'text-slate-800'}`}>Формат</h3>
+             {image && <p className="text-xs text-slate-500 font-bold mt-1 truncate" title={originalFilename}>Файл: {originalFilename}</p>}
+          </div>
+
+          <div className="flex-grow overflow-y-auto custom-scrollbar p-4 space-y-2">
+            {PHOTO_VARIANTS.map(v => (
+              <button 
+                key={v.id}
+                onClick={() => setSelectedVariant(v)}
+                className={`w-full p-3 rounded-xl text-left border-2 transition-all group ${
+                  !isCustom && selectedVariant.id === v.id 
+                  ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20' 
+                  : 'border-transparent hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`}
+              >
+                <div className="flex justify-between items-center">
+                   <span className={`font-black text-sm uppercase tracking-tight ${selectedVariant.id === v.id ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                     {v.label.split('(')[0]}
+                   </span>
+                   {selectedVariant.id === v.id && <Check size={16} className="text-blue-600" />}
+                </div>
+                <p className={`text-[10px] font-bold mt-1 ${selectedVariant.id === v.id ? 'text-blue-400' : 'text-slate-400'}`}>
+                  {v.widthMm} x {v.heightMm} мм
+                  {v.label.includes('(') && <span className="block opacity-75 font-normal">{v.label.split('(')[1].replace(')', '')}</span>}
+                </p>
+              </button>
+            ))}
+          </div>
+
+          <div className="p-6 border-t dark:border-slate-800 border-slate-100 space-y-3 bg-slate-50/50 dark:bg-slate-900/50 flex-shrink-0">
+            <button 
+              onClick={() => setImage(null)}
+              className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-colors ${isDarkMode ? 'bg-slate-800 text-slate-400 hover:text-white' : 'bg-white border text-slate-500 hover:text-slate-800'}`}
+            >
+              Загрузить другое
+            </button>
+            <button 
+              onClick={downloadResult}
+              disabled={!image}
+              className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-tighter shadow-xl shadow-blue-500/20 hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:scale-100 transition-all flex items-center justify-center space-x-2"
+            >
+              <Check size={20} />
+              <span>Сохранить JPG</span>
+            </button>
+            <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-wider">
+               800 DPI • High Quality
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
