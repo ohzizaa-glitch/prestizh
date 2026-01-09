@@ -61,17 +61,13 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     if (!ctx) return;
 
     // 1. Настройка размеров Canvas (Высокое разрешение для печати)
-    // 800 DPI ≈ 31.5 пикселей на мм (800 / 25.4)
-    const PPCM = 31.5; 
+    // 300 DPI = ~11.8 пикселей на мм. Для запаса берем 32 px/mm.
+    const PPCM = 32; 
     const widthPx = activeSpecs.widthMm * PPCM;
     const heightPx = activeSpecs.heightMm * PPCM;
 
     canvas.width = widthPx;
     canvas.height = heightPx;
-
-    // Включаем максимальное качество сглаживания для сохранения цветов и четкости
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
 
     // Заливка белым (на случай прозрачности)
     ctx.fillStyle = '#ffffff';
@@ -187,14 +183,14 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     
     // Create a temporary link to download
     const link = document.createElement('a');
-    // Save as JPEG per user request with 1.0 quality (MAX)
+    // Save as JPEG per user request
     link.download = `${originalFilename}_${activeSpecs.widthMm}x${activeSpecs.heightMm}.jpg`;
-    link.href = canvasRef.current.toDataURL('image/jpeg', 1.0); 
+    link.href = canvasRef.current.toDataURL('image/jpeg', 0.95); // High quality JPEG
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     
-    if (onNotify) onNotify('Фото сохранено (JPEG 800dpi)', 'success');
+    if (onNotify) onNotify('Фото сохранено (JPEG)', 'success');
   };
 
   return (
