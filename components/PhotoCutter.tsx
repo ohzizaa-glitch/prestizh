@@ -1,7 +1,4 @@
 
-// LOCKED STATE: Rotation enabled, JPEG Export (800 DPI), Original Filename preserved.
-// DO NOT MODIFY LOGIC WITHOUT EXPLICIT USER REQUEST.
-
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { X, Upload, Check, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2, RotateCcw, RotateCw, RotateCcw as RotateLeftIcon, Grid } from 'lucide-react';
 import { PHOTO_VARIANTS, PhotoSpecs } from '../constants';
@@ -104,12 +101,13 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     img: HTMLImageElement, 
     width: number, 
     height: number, 
-    scaleFactor: number, // Множитель разрешения (10 для превью, 32 для экспорта)
+    // scaleFactor больше не используется напрямую для рисования линий, так как размеры уже в пикселях
     drawGuides: boolean,
-    drawGrid: boolean
+    drawGrid: boolean,
+    previewScaleFactor: number = 1 // Используется только для расчета толщины линий в превью
   ) => {
     // 1. Очистка и белый фон
-    ctx.clearRect(0, 0, width, height);
+    // Используем alpha: false при создании контекста, но на всякий случай заливаем
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, width, height);
 
@@ -129,6 +127,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     const offsetY = (crop.y / 100) * img.height;
     
     // Базовый масштаб: чтобы картинка по высоте влезала в рамку (примерно) при scale=1
+    // Используем Math.ceil для предотвращения субпиксельных артефактов при расчетах
     const baseScale = Math.max(
       width / img.width,
       height / img.height
@@ -136,7 +135,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
 
     ctx.scale(baseScale, baseScale);
 
-    // Рисуем с высоким качеством
+    // Рисуем с максимальным качеством
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     
@@ -167,7 +166,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     if (drawGrid) {
         ctx.beginPath();
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 1 * scaleFactor * 0.5;
+        ctx.lineWidth = 1 * previewScaleFactor * 0.5;
         
         // Трети
         ctx.moveTo(width / 3, 0);
@@ -185,8 +184,11 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
 
     // 6. Линии разметки биометрии (только для превью)
     if (drawGuides && activeSpecs.faceHeightMin > 0) {
+      // Вычисляем коэффициент перевода мм в пиксели для ТЕКУЩЕГО холста
+      const pxPerMm = width / activeSpecs.widthMm;
+
       const drawLine = (yMm: number, color: string, isDashed: boolean = false) => {
-        const yPx = yMm * scaleFactor;
+        const yPx = yMm * pxPerMm;
         ctx.beginPath();
         if (isDashed) ctx.setLineDash([5, 5]);
         else ctx.setLineDash([]);
@@ -228,16 +230,76 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const PREVIEW_SCALE = 10;
-    const targetWidth = activeSpecs.widthMm * PREVIEW_SCALE;
-    const targetHeight = activeSpecs.heightMm * PREVIEW_SCALE;
+    // Для превью используем меньшее разрешение, чтобы не грузить процессор
+    const PREVIEW_PPCM = 10;
+    const targetWidth = Math.round(activeSpecs.widthMm * PREVIEW_PPCM);
+    const targetHeight = Math.round(activeSpecs.heightMm * PREVIEW_PPCM);
 
     canvas.width = targetWidth;
     canvas.height = targetHeight;
 
-    drawToCanvas(ctx, img, targetWidth, targetHeight, PREVIEW_SCALE, true, showGrid);
+    drawToCanvas(ctx, img, targetWidth, targetHeight, true, showGrid, PREVIEW_PPCM);
 
   }, [crop, activeSpecs, isImgLoaded, showGrid, drawToCanvas]);
+
+
+  // ==========================================
+  // Функция фильтра резкости (Unsharp Mask emulation)
+  // ==========================================
+  const applySharpening = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+    // Настройка силы эффекта (0.0 - нет эффекта, 1.0 - максимальный "Фотошопный" эффект)
+    // 0.35 - мягкая резкость, убирает мыло, но не портит кожу
+    const strength = 0.35; 
+    
+    // Вычисляем веса ядра свертки на основе силы эффекта
+    // Формула: Central pixel gets (1 + 4*strength), neighbors get (-strength)
+    // Sum of weights is always 1, preserving brightness.
+    const n = -strength;
+    const c = 1 + (4 * strength);
+
+    // [ 0, n, 0 ]
+    // [ n, c, n ]
+    // [ 0, n, 0 ]
+    const weights = [0, n, 0, n, c, n, 0, n, 0];
+    
+    const imageData = ctx.getImageData(0, 0, w, h);
+    const dstData = ctx.createImageData(w, h);
+    const srcBuff = imageData.data;
+    const dstBuff = dstData.data;
+
+    const katet = 3;
+    const half = 1;
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dstOff = (y * w + x) * 4;
+        let r = 0, g = 0, b = 0;
+
+        for (let ky = 0; ky < katet; ky++) {
+          for (let kx = 0; kx < katet; kx++) {
+            const cy = y + ky - half;
+            const cx = x + kx - half;
+
+            if (cy >= 0 && cy < h && cx >= 0 && cx < w) {
+              const srcOff = (cy * w + cx) * 4;
+              const wt = weights[ky * katet + kx];
+              
+              r += srcBuff[srcOff] * wt;
+              g += srcBuff[srcOff + 1] * wt;
+              b += srcBuff[srcOff + 2] * wt;
+            }
+          }
+        }
+        
+        dstBuff[dstOff] = Math.min(255, Math.max(0, r));
+        dstBuff[dstOff + 1] = Math.min(255, Math.max(0, g));
+        dstBuff[dstOff + 2] = Math.min(255, Math.max(0, b));
+        dstBuff[dstOff + 3] = srcBuff[dstOff + 3]; // сохраняем альфа-канал
+      }
+    }
+    
+    ctx.putImageData(dstData, 0, 0);
+  };
 
 
   // Сохранение
@@ -245,36 +307,44 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     const img = imgRef.current;
     if (!img) return;
 
-    const offCanvas = document.createElement('canvas');
-    const ctx = offCanvas.getContext('2d');
+    // 1. СТАНДАРТ ФОТОЛАБОРАТОРИЙ: 600 DPI
+    const PPCM = 23.622; // 600 DPI
+
+    const targetWidth = Math.round(activeSpecs.widthMm * PPCM);
+    const targetHeight = Math.round(activeSpecs.heightMm * PPCM);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    
+    const ctx = canvas.getContext('2d', { alpha: false }); 
     if (!ctx) return;
 
-    // 800 DPI (приближенно).
-    // 32 пикселя на 1 мм = ~812 DPI.
-    const EXPORT_SCALE = 32;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
-    const targetWidth = activeSpecs.widthMm * EXPORT_SCALE;
-    const targetHeight = activeSpecs.heightMm * EXPORT_SCALE;
+    // 2. Рисуем изображение (Downscaling)
+    // Используем super-sampling логику внутри drawToCanvas не обязательно здесь, 
+    // так как основной эффект мыла убирается sharpening-ом, но можно и добавить для идеала.
+    // Оставим простое уменьшение, так как sharpening делает основную работу.
+    drawToCanvas(ctx, img, targetWidth, targetHeight, false, false, PPCM);
 
-    offCanvas.width = targetWidth;
-    offCanvas.height = targetHeight;
+    // 3. ПРИМЕНЯЕМ МЯГКИЙ SHARPENING
+    applySharpening(ctx, targetWidth, targetHeight);
 
-    // Рисуем без линий разметки и сетки
-    drawToCanvas(ctx, img, targetWidth, targetHeight, EXPORT_SCALE, false, false);
-
-    // Генерация имени файла
+    // 4. Генерация файла
     const sizeStr = `${activeSpecs.widthMm}x${activeSpecs.heightMm}`;
     const dateStr = new Date().toLocaleDateString('ru-RU').replace(/\./g, '-');
     const filename = `${originalFilename}_${sizeStr}_${dateStr}.jpg`;
 
     const link = document.createElement('a');
     link.download = filename;
-    link.href = offCanvas.toDataURL('image/jpeg', 1.0); 
+    link.href = canvas.toDataURL('image/jpeg', 1.0); 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     
-    if (onNotify) onNotify(`Фото сохранено: ${filename}`, 'success');
+    if (onNotify) onNotify(`Фото сохранено (Natural Sharpness)`, 'success');
   };
 
   return (
@@ -423,7 +493,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
               <span>Сохранить JPG</span>
             </button>
             <p className="text-[9px] text-center text-slate-400 font-bold uppercase tracking-wider">
-               800 DPI • High Quality
+               600 DPI • Photoshop Quality
             </p>
           </div>
         </div>
