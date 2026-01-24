@@ -12,8 +12,9 @@ import CloudInbox from './components/CloudInbox';
 import NotebookModal from './components/NotebookModal';
 import TodoListModal from './components/TodoListModal';
 import WorkloadWidget, { ActiveClient } from './components/WorkloadWidget';
+import TemplatesModal from './components/TemplatesModal';
 import Toast from './components/Toast';
-import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload, Menu, X, ChevronRight, BookOpen, ClipboardList } from 'lucide-react';
+import { ShoppingBag, History, TrendingUp, Settings, Crop, Search, Moon, Sun, CloudUpload, Menu, X, ChevronRight, BookOpen, ClipboardList, LayoutTemplate } from 'lucide-react';
 import { PaymentMethod, Order, ServiceItem } from './types';
 
 export default function App() {
@@ -180,6 +181,7 @@ export default function App() {
   const [isEarningsOpen, setIsEarningsOpen] = useState(false);
   const [isNotebookOpen, setIsNotebookOpen] = useState(false);
   const [isCutterOpen, setIsCutterOpen] = useState(false);
+  const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
   const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [isTodoOpen, setIsTodoOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -462,6 +464,13 @@ export default function App() {
                 <CloudUpload size={20} />
               </button>
               <button 
+                onClick={() => setIsTemplatesOpen(true)} 
+                className="p-2.5 rounded-xl dark:bg-slate-700 dark:text-pink-400 bg-slate-100 text-pink-600 hover:bg-slate-200 transition-all"
+                title="Шаблоны"
+              >
+                <LayoutTemplate size={20} />
+              </button>
+              <button 
                 onClick={() => setIsCutterOpen(true)} 
                 className="p-2.5 rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all"
                 title="Резак"
@@ -677,6 +686,13 @@ export default function App() {
       {isCutterOpen && (
         <PhotoCutter 
           onClose={() => setIsCutterOpen(false)} 
+          isDarkMode={isDarkMode}
+          onNotify={showToast}
+        />
+      )}
+      {isTemplatesOpen && (
+        <TemplatesModal 
+          onClose={() => setIsTemplatesOpen(false)} 
           isDarkMode={isDarkMode}
           onNotify={showToast}
         />

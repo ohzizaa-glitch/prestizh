@@ -248,8 +248,8 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
   // ==========================================
   const applySharpening = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
     // Настройка силы эффекта (0.0 - нет эффекта, 1.0 - максимальный "Фотошопный" эффект)
-    // 0.15 - очень деликатная резкость (Natural Look)
-    const strength = 0.15; 
+    // 0.22 - сбалансированная резкость
+    const strength = 0.22; 
     
     // Вычисляем веса ядра свертки на основе силы эффекта
     // Формула: Central pixel gets (1 + 4*strength), neighbors get (-strength)
