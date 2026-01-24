@@ -248,8 +248,8 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
   // ==========================================
   const applySharpening = (ctx: CanvasRenderingContext2D, w: number, h: number) => {
     // Настройка силы эффекта (0.0 - нет эффекта, 1.0 - максимальный "Фотошопный" эффект)
-    // 0.35 - мягкая резкость, убирает мыло, но не портит кожу
-    const strength = 0.35; 
+    // 0.15 - очень деликатная резкость (Natural Look)
+    const strength = 0.15; 
     
     // Вычисляем веса ядра свертки на основе силы эффекта
     // Формула: Central pixel gets (1 + 4*strength), neighbors get (-strength)
@@ -324,9 +324,6 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     ctx.imageSmoothingQuality = 'high';
 
     // 2. Рисуем изображение (Downscaling)
-    // Используем super-sampling логику внутри drawToCanvas не обязательно здесь, 
-    // так как основной эффект мыла убирается sharpening-ом, но можно и добавить для идеала.
-    // Оставим простое уменьшение, так как sharpening делает основную работу.
     drawToCanvas(ctx, img, targetWidth, targetHeight, false, false, PPCM);
 
     // 3. ПРИМЕНЯЕМ МЯГКИЙ SHARPENING
@@ -344,7 +341,7 @@ const PhotoCutter: React.FC<PhotoCutterProps> = ({ onClose, isDarkMode, onNotify
     link.click();
     document.body.removeChild(link);
     
-    if (onNotify) onNotify(`Фото сохранено (Natural Sharpness)`, 'success');
+    if (onNotify) onNotify(`Фото сохранено (Natural Look)`, 'success');
   };
 
   return (
