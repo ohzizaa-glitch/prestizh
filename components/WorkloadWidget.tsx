@@ -6,6 +6,7 @@ export interface ActiveClient {
   id: string;
   type: 'regular' | 'urgent';
   finishTime: number; // Время окончания в ms (Unix timestamp)
+  freeTime: number;
   totalDurationMs: number;
   label: string;
 }
@@ -14,6 +15,7 @@ interface WorkloadWidgetProps {
   clients: ActiveClient[];
   onAddClient: (type: 'regular' | 'urgent') => void;
   onRemoveClient: (id: string) => void;
+  onResetQueue: () => void;
   onAddMinutes: (id: string, minutes: number) => void;
   onClearAll: () => void;
   isDarkMode: boolean;
@@ -23,6 +25,7 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
   clients, 
   onAddClient, 
   onRemoveClient, 
+  onResetQueue,
   onAddMinutes,
   onClearAll, 
   isDarkMode 
@@ -65,6 +68,26 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
             </p>
           </div>
 
+          {clients.length > 0 && (
+            <div className={`p-6 rounded-2xl border flex flex-col gap-1 transition-all shadow-inner animate-in fade-in slide-in-from-left-2 ${isDarkMode ? 'bg-blue-900/20 border-blue-900/30 text-blue-100' : 'bg-blue-50 border-blue-100 text-blue-900'}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <Users size={16} className="text-blue-500" />
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-60">След. клиент через</p>
+              </div>
+              <p className="text-4xl font-black tracking-tighter leading-none tabular-nums">
+                {(() => {
+                  const lastClient = clients[clients.length - 1];
+                  const remaining = lastClient.freeTime - now;
+                  if (remaining <= 0) return "0:00";
+                  const totalSeconds = Math.floor(remaining / 1000);
+                  const mins = Math.floor(totalSeconds / 60);
+                  const secs = totalSeconds % 60;
+                  return `${mins}:${secs.toString().padStart(2, '0')}`;
+                })()}
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2">
             <button 
               onClick={() => onAddClient('regular')}
@@ -80,6 +103,17 @@ const WorkloadWidget: React.FC<WorkloadWidgetProps> = ({
               <div className="flex items-center gap-2"><Zap size={18} /><span>+ Тяжелый</span></div>
               <span className="opacity-50">20/15м</span>
             </button>
+            
+            {clients.length > 0 && (
+              <button 
+                onClick={onResetQueue}
+                className={`mt-2 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-black text-xs uppercase tracking-tight transition-all border shadow-sm ${isDarkMode ? 'bg-blue-600/20 border-blue-500/30 text-blue-400 hover:bg-blue-600 hover:text-white' : 'bg-blue-50 border-blue-100 text-blue-600 hover:bg-blue-600 hover:text-white'}`}
+                title="Сбросить время ожидания (я освободился раньше)"
+              >
+                <Clock size={18} />
+                <span>Я освободился</span>
+              </button>
+            )}
           </div>
           
           {clients.length > 0 && (

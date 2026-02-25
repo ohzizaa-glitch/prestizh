@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { SERVICE_CATEGORIES, PRINTING_CATEGORY, PHOTO_VARIANTS, DIGITAL_CATEGORY_IDS } from './constants';
 import ServiceCard from './components/ServiceCard';
 import PrintingSection from './components/PrintingSection';
@@ -33,10 +33,18 @@ export default function App() {
   const [clients, setClientsState] = useState<ActiveClient[]>(() => {
     try {
       const saved = localStorage.getItem('prestige_clients_queue');
-      // Миграция старых данных (если там был remainingMs, он мог устареть)
-      // Лучше сбросить, если структура не совпадает, или просто принять как есть
-      // В новой версии мы используем finishTime.
-      return saved ? JSON.parse(saved) : [];
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.map((c: any) => {
+          if (c.freeTime === undefined) {
+            const busy = (c.type === 'regular' ? 10 : 15) * 60000;
+            const total = (c.type === 'regular' ? 15 : 20) * 60000;
+            return { ...c, freeTime: c.finishTime - (total - busy) };
+          }
+          return c;
+        });
+      }
+      return [];
     } catch (e) {
       console.error('Ошибка загрузки очереди:', e);
       return [];
@@ -44,31 +52,29 @@ export default function App() {
   });
 
   // Канал для синхронизации между вкладками
-  const syncChannel = useMemo(() => new BroadcastChannel('prestige_sync_channel'), []);
+  const syncChannelRef = useRef<BroadcastChannel | null>(null);
 
-  // Обертка для изменения клиентов с синхронизацией
+  // Обертка для изменения клиентов
   const setClients = (newClientsOrUpdater: ActiveClient[] | ((prev: ActiveClient[]) => ActiveClient[])) => {
     setClientsState(prev => {
       const updated = typeof newClientsOrUpdater === 'function' ? newClientsOrUpdater(prev) : newClientsOrUpdater;
-      
-      // Сохраняем и уведомляем другие вкладки
-      localStorage.setItem('prestige_clients_queue', JSON.stringify(updated));
-      syncChannel.postMessage({ type: 'SYNC_CLIENTS', payload: updated });
-      
       return updated;
     });
   };
 
-  // Слушаем изменения из других вкладок (BroadcastChannel + Storage Event)
+  // Эффект для инициализации канала и слушателей
   useEffect(() => {
-    // 1. Обработка сообщений от BroadcastChannel (быстрая синхронизация)
-    syncChannel.onmessage = (event) => {
+    const bc = new BroadcastChannel('prestige_sync_channel');
+    syncChannelRef.current = bc;
+
+    bc.onmessage = (event) => {
       if (event.data && event.data.type === 'SYNC_CLIENTS') {
+        // Чтобы избежать бесконечного цикла между вкладками, 
+        // можно добавить проверку, но BroadcastChannel не шлет самому себе.
         setClientsState(event.data.payload);
       }
     };
 
-    // 2. Обработка события storage (для надежности)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'prestige_clients_queue' && e.newValue) {
         try {
@@ -83,10 +89,32 @@ export default function App() {
     window.addEventListener('storage', handleStorageChange);
 
     return () => {
-      syncChannel.close();
+      bc.close();
+      syncChannelRef.current = null;
       window.removeEventListener('storage', handleStorageChange);
     };
-  }, [syncChannel]);
+  }, []);
+
+  // Эффект для сохранения и рассылки изменений (Side Effects)
+  // Используем useRef для отслеживания того, пришло ли обновление извне
+  const lastSyncedPayloadRef = useRef<string>('');
+
+  useEffect(() => {
+    const payload = JSON.stringify(clients);
+    if (payload === lastSyncedPayloadRef.current) return;
+    
+    lastSyncedPayloadRef.current = payload;
+    localStorage.setItem('prestige_clients_queue', payload);
+    
+    if (syncChannelRef.current) {
+      try {
+        syncChannelRef.current.postMessage({ type: 'SYNC_CLIENTS', payload: clients });
+      } catch (e) {
+        // Если канал закрыт, просто игнорируем (он пересоздастся если надо, 
+        // но тут он закрывается только при unmount)
+      }
+    }
+  }, [clients]);
 
 
   // 3. Инициализация ИСТОРИИ ЗАКАЗОВ сразу из памяти
@@ -130,29 +158,29 @@ export default function App() {
 
   const handleAddClient = (type: 'regular' | 'urgent') => {
     setClients(prev => {
-      // Ищем самое позднее время окончания среди текущих клиентов
-      const maxFinishTime = prev.reduce((max, c) => Math.max(max, c.finishTime), Date.now());
+      const nowMs = Date.now();
+      const lastClient = prev[prev.length - 1];
       
-      // Определяем длительность в мс
-      let durationMs = 0;
-      if (prev.length === 0 || maxFinishTime <= Date.now()) {
-        // Если очередь пуста или все заказы уже просрочены, начинаем от "сейчас"
-        durationMs = type === 'regular' ? 15 * 60000 : 20 * 60000;
+      const busyDurationMs = (type === 'regular' ? 10 : 15) * 60000;
+      const totalDurationMs = (type === 'regular' ? 15 : 20) * 60000;
+
+      let startTime: number;
+
+      if (!lastClient || lastClient.freeTime <= nowMs) {
+        startTime = nowMs;
       } else {
-        // Иначе добавляем ко времени окончания последнего заказа
-        const addMinutes = type === 'regular' ? 10 : 15;
-        durationMs = addMinutes * 60000;
+        startTime = lastClient.freeTime;
       }
 
-      // Вычисляем время старта (либо сейчас, либо когда освободится последний)
-      const startTime = Math.max(Date.now(), maxFinishTime);
-      const finishTime = startTime + durationMs;
+      const freeTime = startTime + busyDurationMs;
+      const finishTime = startTime + totalDurationMs;
 
       const newClient: ActiveClient = {
         id: Math.random().toString(36).substr(2, 9),
         type,
-        finishTime: finishTime,
-        totalDurationMs: durationMs, // Храним чисто для расчета прогрессбара
+        finishTime,
+        freeTime,
+        totalDurationMs,
         label: type === 'regular' ? `Клиент` : `Тяжелый`
       };
       return [...prev, newClient];
@@ -160,16 +188,105 @@ export default function App() {
   };
 
   const handleRemoveClient = (id: string) => {
-    setClients(prev => prev.filter(c => c.id !== id));
+    setClients(prev => {
+      const index = prev.findIndex(c => c.id === id);
+      if (index === -1) return prev;
+      
+      const newQueue = prev.filter(c => c.id !== id);
+      if (newQueue.length === 0) return [];
+      
+      const nowMs = Date.now();
+      const rebuiltQueue = [];
+      let workerFreeTime = nowMs;
+
+      for (let i = 0; i < newQueue.length; i++) {
+        const client = newQueue[i];
+        const busyDurationMs = (client.type === 'regular' ? 10 : 15) * 60000;
+        const totalDurationMs = (client.type === 'regular' ? 15 : 20) * 60000;
+        
+        let startTime;
+        if (i === 0) {
+           const originalStartTime = client.freeTime - busyDurationMs;
+           startTime = originalStartTime > nowMs ? nowMs : originalStartTime;
+        } else {
+           startTime = workerFreeTime;
+        }
+        
+        const freeTime = startTime + busyDurationMs;
+        const finishTime = startTime + totalDurationMs;
+        
+        workerFreeTime = freeTime;
+        
+        rebuiltQueue.push({
+          ...client,
+          freeTime,
+          finishTime
+        });
+      }
+      return rebuiltQueue;
+    });
+  };
+
+  // Сброс времени ожидания (если освободился раньше)
+  const handleResetQueue = () => {
+    setClients(prev => {
+      if (prev.length === 0) return prev;
+      
+      const nowMs = Date.now();
+      const updated = [...prev];
+      
+      updated[0] = { ...updated[0], freeTime: nowMs };
+      
+      let workerFreeTime = nowMs;
+      for (let i = 1; i < updated.length; i++) {
+        const client = updated[i];
+        const busyDurationMs = (client.type === 'regular' ? 10 : 15) * 60000;
+        const totalDurationMs = (client.type === 'regular' ? 15 : 20) * 60000;
+        
+        const startTime = workerFreeTime;
+        const freeTime = startTime + busyDurationMs;
+        const finishTime = startTime + totalDurationMs;
+        
+        workerFreeTime = freeTime;
+        updated[i] = { ...client, freeTime, finishTime };
+      }
+      
+      return updated;
+    });
   };
 
   // Добавить/убавить минуты у конкретного клиента (сдвигает финиш)
   const handleAddMinutes = (id: string, minutes: number) => {
-    setClients(prev => prev.map(c => 
-      c.id === id 
-        ? { ...c, finishTime: c.finishTime + (minutes * 60000) } 
-        : c
-    ));
+    setClients(prev => {
+      const index = prev.findIndex(c => c.id === id);
+      if (index === -1) return prev;
+
+      const updated = [...prev];
+      const msToAdd = minutes * 60000;
+      
+      updated[index] = { 
+        ...updated[index], 
+        freeTime: updated[index].freeTime + msToAdd,
+        finishTime: updated[index].finishTime + msToAdd,
+        totalDurationMs: updated[index].totalDurationMs + msToAdd
+      };
+      
+      let workerFreeTime = updated[index].freeTime;
+      for (let i = index + 1; i < updated.length; i++) {
+        const client = updated[i];
+        const busyDurationMs = (client.type === 'regular' ? 10 : 15) * 60000;
+        const totalDurationMs = (client.type === 'regular' ? 15 : 20) * 60000;
+        
+        const startTime = workerFreeTime;
+        const freeTime = startTime + busyDurationMs;
+        const finishTime = startTime + totalDurationMs;
+        
+        workerFreeTime = freeTime;
+        updated[i] = { ...client, freeTime, finishTime };
+      }
+      
+      return updated;
+    });
   };
 
   const handleClearQueue = () => {
@@ -513,6 +630,7 @@ export default function App() {
             clients={clients} 
             onAddClient={handleAddClient}
             onRemoveClient={handleRemoveClient}
+            onResetQueue={handleResetQueue}
             onAddMinutes={handleAddMinutes}
             onClearAll={handleClearQueue}
             isDarkMode={isDarkMode} 
